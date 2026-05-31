@@ -98,6 +98,8 @@ tailscale ip -4
 ANA_BOARD_ADDR=<mac-tailscale-ip>:18080 ana-board
 ```
 
+Use the Tailscale IP here, not `127.0.0.1`, when a remote machine such as Vultr needs to connect. Binding to `127.0.0.1` only accepts connections from the Mac itself.
+
 4. Open the board:
 
 ```text
@@ -119,6 +121,15 @@ export PATH="$PATH:$(go env GOPATH)/bin"
 export ANA_BOARD_URL=http://<mac-tailscale-ip>:18080
 ana-boardctl send --source hermes --kind task "[green]HERMES CONNECTED ✅"
 ```
+
+If Hermes can ping the Mac but `ana-boardctl send` says `connection refused`, Tailscale routing is working but Ana Board is not listening on the Tailscale address. On the Mac, check:
+
+```sh
+lsof -nP -iTCP:18080 -sTCP:LISTEN
+curl http://<mac-tailscale-ip>:18080/healthz
+```
+
+The listener should show `<mac-tailscale-ip>:18080`, not only `127.0.0.1:18080`.
 
 See [docs/hermes-vultr.md](docs/hermes-vultr.md) for the longer setup.
 

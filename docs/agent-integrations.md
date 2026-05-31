@@ -65,6 +65,8 @@ ANA_BOARD_URL=http://ana-board-host:18080 ana-boardctl send --source hermes --ki
 
 This keeps the board private inside the tailnet. Do not use Tailscale Funnel for this unauthenticated build.
 
+If the Vultr agent can ping the board host but `ana-boardctl send` gets `connection refused`, the board host is reachable but Ana Board is not listening on the Tailscale IP. Restart the board host with `ANA_BOARD_ADDR=<board-tailscale-ip>:18080 ana-board` and verify with `curl http://<board-tailscale-ip>:18080/healthz`.
+
 See [hermes-vultr.md](hermes-vultr.md) for the full setup.
 
 ## Codex

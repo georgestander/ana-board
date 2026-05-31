@@ -37,6 +37,8 @@ Run Ana Board on that private address:
 ANA_BOARD_ADDR=<local-tailscale-ip>:18080 ana-board
 ```
 
+Do not bind to `127.0.0.1` for this setup. `127.0.0.1` only accepts connections from the local machine, so Hermes on Vultr will get `connection refused` even if Tailscale ping works.
+
 Then open the display locally:
 
 ```text
@@ -64,6 +66,21 @@ Smoke test:
 ana-boardctl capabilities --json
 ana-boardctl send --source hermes --kind task "[amber]HERMES CONNECTED 📌"
 ```
+
+If the smoke test fails with `connect: connection refused`, check the Mac-side listener:
+
+```sh
+lsof -nP -iTCP:18080 -sTCP:LISTEN
+curl http://<local-tailscale-ip>:18080/healthz
+```
+
+The listener must be on `<local-tailscale-ip>:18080`. If it shows `127.0.0.1:18080`, stop Ana Board and restart it with:
+
+```sh
+ANA_BOARD_ADDR=<local-tailscale-ip>:18080 ana-board
+```
+
+If ping works but `curl` times out instead of refusing immediately, check the Mac firewall or Tailscale ACLs.
 
 ## 4. MCP Mode
 
