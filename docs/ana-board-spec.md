@@ -106,10 +106,12 @@ import "fmt"
 const (
     DefaultRows = 6
     DefaultCols = 22
+    DefaultColor = "white"
 )
 
 type Cell struct {
-    Char rune
+    Symbol string
+    Color  string
 }
 
 type Frame struct {
@@ -131,7 +133,7 @@ func NewFrame(rows, cols int) (Frame, error) {
     for row := range cells {
         cells[row] = make([]Cell, cols)
         for col := range cells[row] {
-            cells[row][col] = Cell{Char: ' '}
+            cells[row][col] = Cell{Symbol: " ", Color: DefaultColor}
         }
     }
 
@@ -172,7 +174,7 @@ How to read that file:
 
 4. `type Cell struct`
 
-   This is a noun. A `Cell` is one position on the board. Right now it only has `Char`, but later it could grow a `Color` or `Kind` field.
+   This is a noun. A `Cell` is one position on the board. It has a visible `Symbol` and a `Color`.
 
 5. `type Frame struct`
 
@@ -200,7 +202,7 @@ How to read that file:
        cells
    ```
 
-10. `Cell{Char: ' '}`
+10. `Cell{Symbol: " ", Color: DefaultColor}`
 
     Every empty cell starts as a visible space. That means a new frame is blank, not random or undefined.
 
@@ -241,8 +243,8 @@ func TestNewFrameCreatesBlankFrame(t *testing.T) {
         t.Fatalf("len(Cells[0]) = %d, want 22", len(frame.Cells[0]))
     }
 
-    if frame.Cells[0][0].Char != ' ' {
-        t.Fatalf("first cell = %q, want space", frame.Cells[0][0].Char)
+    if frame.Cells[0][0].Symbol != " " {
+        t.Fatalf("first cell = %q, want space", frame.Cells[0][0].Symbol)
     }
 }
 
@@ -396,7 +398,7 @@ Conceptually:
 
 ```go
 type Cell struct {
-    Char  rune
+    Symbol string
     Color string
 }
 ```
@@ -406,12 +408,14 @@ Learning concept:
 - `struct`
 - field names
 - zero values
-- why `rune` is used for characters
+- why emoji need a string symbol instead of a single rune
 
 Product concept:
 
 - every tile has one final visible symbol
-- later, color blocks can be represented as special cells
+- native emoji such as `🚀`, `👍🏽`, and `🇿🇦` still occupy one tile
+- named aliases such as `:rocket:` are convenience input, not the full emoji set
+- colors are tile metadata and may be assigned per tile or segment
 
 ### 6.2 Frame
 
@@ -761,10 +765,10 @@ Request:
 
 ```json
 {
-  "text": "BUILD FINISHED",
+  "text": "[green]B[amber]U[blue]I[violet]L[green]D FINISHED ✅",
   "source": "codex",
   "priority": "normal",
-  "animation": "shuffle"
+  "animation": "row"
 }
 ```
 
@@ -787,7 +791,8 @@ Validation:
 - `text` is required
 - `source` defaults to `unknown`
 - `priority` defaults to `normal`
-- `animation` defaults to `shuffle`
+- `animation` defaults to `row`; row is the only supported animation
+- exact per-tile color can be sent with `tiles`, for example `[{"symbol":"A","color":"green"},{"symbol":"N","color":"amber"}]`
 - message must fit the selected layout
 
 Learning concept:
@@ -832,7 +837,7 @@ Event:
 
 ```text
 event: frame
-data: {"rows":6,"cols":22,"cells":[...],"animation":"shuffle"}
+data: {"rows":6,"cols":22,"cells":[...],"animation":"row"}
 ```
 
 Learning concept:
@@ -883,17 +888,9 @@ Animation should live in the browser.
 
 The server sends the final frame. The browser decides how to visually transition from old frame to new frame.
 
-Initial animation modes:
+Initial animation mode:
 
-- instant
 - row
-- shuffle
-
-Later:
-
-- dramatic
-- mechanical
-- ripple
 - source-specific styles
 
 Learning concept:
@@ -1277,8 +1274,6 @@ Make the board feel like a split-flap display.
 Build:
 
 - tile state in JS
-- instant transition
-- shuffle transition
 - row transition
 - CSS flip effect
 
@@ -1331,12 +1326,12 @@ Done when:
 
 Goal:
 
-Create a tiny command-line sender.
+Create a tiny command-line sender that agents and scripts can understand.
 
 Command:
 
 ```text
-ana-board send "BUILD PASSED"
+ana-boardctl send "[green]BUILD PASSED ✅"
 ```
 
 Build:
@@ -1344,6 +1339,9 @@ Build:
 - `cmd/ana-boardctl`
 - config via environment variables
 - HTTP client request
+- `capabilities --json`
+- `preview`
+- clear confirmation
 
 Go concepts:
 
@@ -1351,11 +1349,42 @@ Go concepts:
 - `flag`
 - HTTP clients
 - environment variables
+- shared client package
 
 Done when:
 
 - CLI sends to local server
+- CLI previews emoji/color frames without sending
+- `capabilities --json` explains rows, columns, colors, kinds, animations, native emoji support, and optional aliases
 - failures print clear errors
+
+### Phase 10.5: MCP Server
+
+Goal:
+
+Expose Ana Board as a fixed MCP stdio tool server.
+
+Build:
+
+- `cmd/ana-board-mcp`
+- JSON-RPC over stdio
+- `initialize`
+- `tools/list`
+- `tools/call`
+- fixed tools only:
+  - `ana_board_capabilities`
+  - `ana_board_preview_message`
+  - `ana_board_send_message`
+  - `ana_board_current`
+  - `ana_board_recent_messages`
+  - `ana_board_clear`
+
+Done when:
+
+- Claude Code/OpenCode-style MCP clients can list tools
+- agents can preview before sending
+- send uses the same HTTP client as the CLI
+- clear requires `confirm=true`
 
 ### Phase 11: Local SQLite
 
@@ -1462,7 +1491,7 @@ CREATE TABLE messages (
   text TEXT NOT NULL,
   source TEXT,
   priority TEXT NOT NULL DEFAULT 'normal',
-  animation TEXT NOT NULL DEFAULT 'shuffle',
+  animation TEXT NOT NULL DEFAULT 'row',
   created_at INTEGER NOT NULL,
   displayed_at INTEGER,
   status TEXT NOT NULL DEFAULT 'displayed'
@@ -1501,19 +1530,22 @@ Make Ana Board useful for real workflows.
 Build:
 
 - Codex example
+- Claude Code MCP example
+- OpenCode MCP example
 - GitHub Actions example
 - cron example
 - Home Assistant or MQTT notes
 - Hermes/Sense-style integration notes
+- Tailscale private-network notes
 
 Message examples:
 
 ```text
-CODEX REVIEWING PR 42
-BUILD FAILED AUTH TESTS
-DEPLOY COMPLETE
-AGENT NEEDS APPROVAL
-RESEARCH DIGEST READY
+[blue]CODEX REVIEWING PR 42 💻
+[red]BUILD FAILED AUTH TESTS ⚠️
+[green]DEPLOY COMPLETE 🚀
+[amber]AGENT NEEDS APPROVAL ⚠️
+[violet]RESEARCH DIGEST READY 📌
 ```
 
 Done when:

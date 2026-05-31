@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ana Board</title>
+  <link rel="stylesheet" href="/static/board.css?v=color2">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">Ana Board</div>
+      <div class="topbar-status">
+        <a class="topbar-link" href="/admin">admin</a>
+        <button id="sound-toggle" class="sound-toggle" type="button" aria-pressed="false">sound off</button>
+        <div id="connection" class="connection">connecting</div>
+      </div>
+    </header>
+    <section id="board" class="board" aria-label="Ana Board display"></section>
+  </main>
+  <script src="/static/board.js?v=color2"></script>
+</body>
+</html>

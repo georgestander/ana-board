@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ana Board Admin</title>
+  <link rel="stylesheet" href="/static/admin.css?v=7">
+</head>
+<body>
+  <main class="admin-shell">
+    <header class="admin-topbar">
+      <a class="brand" href="/">Ana Board</a>
+      <nav class="admin-nav" aria-label="Admin navigation">
+        <a href="/">display</a>
+        <a href="/admin">admin</a>
+      </nav>
+    </header>
+
+    <div id="admin-notice" class="notice" role="status" {{if not .Notice}}hidden{{end}}>{{.Notice}}</div>
+    <div id="admin-error" class="error" role="alert" {{if not .Error}}hidden{{end}}>{{.Error}}</div>
+
+    <section class="sound-check" aria-labelledby="sound-check-title">
+      <div>
+        <h2 id="sound-check-title">Raw Sound File</h2>
+        <p>This is the exact WAV served by the app.</p>
+      </div>
+      <audio id="raw-sound" controls preload="auto" src="/static/sounds/split-flap.wav?v=6"></audio>
+    </section>
+
+    <section class="preview" aria-labelledby="preview-title">
+      <h2 id="preview-title">Display Preview</h2>
+      <iframe class="board-preview-frame" src="/?embed=1" title="Ana Board display preview"></iframe>
+    </section>
+
+    <section class="admin-grid">
+      <form class="compose" method="post" action="/admin/messages">
+        <h1>Send Message</h1>
+        <div class="message-entry">
+          <label class="message-text-field">
+            <span>Text</span>
+            <textarea name="text" rows="5" maxlength="512" placeholder="[green]BUILD PASSED ✅" autofocus required>{{.Text}}</textarea>
+          </label>
+          <div class="message-actions">
+            <button type="submit">Send</button>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label>
+            <span>Source</span>
+            <input name="source" value="{{.Source}}" maxlength="64">
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            <span>Kind</span>
+            <select name="kind">
+              <option value="info" {{if eq .Kind "info"}}selected{{end}}>info</option>
+              <option value="success" {{if eq .Kind "success"}}selected{{end}}>success</option>
+              <option value="warning" {{if eq .Kind "warning"}}selected{{end}}>warning</option>
+              <option value="error" {{if eq .Kind "error"}}selected{{end}}>error</option>
+              <option value="reminder" {{if eq .Kind "reminder"}}selected{{end}}>reminder</option>
+              <option value="email" {{if eq .Kind "email"}}selected{{end}}>email</option>
+              <option value="task" {{if eq .Kind "task"}}selected{{end}}>task</option>
+              <option value="deploy" {{if eq .Kind "deploy"}}selected{{end}}>deploy</option>
+              <option value="build" {{if eq .Kind "build"}}selected{{end}}>build</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Default Color</span>
+            <select name="color">
+              <option value="white" {{if eq .Color "white"}}selected{{end}}>white</option>
+              <option value="green" {{if eq .Color "green"}}selected{{end}}>green</option>
+              <option value="amber" {{if eq .Color "amber"}}selected{{end}}>amber</option>
+              <option value="red" {{if eq .Color "red"}}selected{{end}}>red</option>
+              <option value="blue" {{if eq .Color "blue"}}selected{{end}}>blue</option>
+              <option value="violet" {{if eq .Color "violet"}}selected{{end}}>violet</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="emoji-palette" aria-label="Common emoji inserts">
+          <button type="button" data-insert="✅">✅</button>
+          <button type="button" data-insert="⚠️">⚠️</button>
+          <button type="button" data-insert="🚀">🚀</button>
+          <button type="button" data-insert="✉️">✉️</button>
+          <button type="button" data-insert="📅">📅</button>
+          <button type="button" data-insert="🌍">🌍</button>
+          <button type="button" data-insert="🛠️">🛠️</button>
+          <button type="button" data-insert="📌">📌</button>
+        </div>
+
+        <div class="color-palette" aria-label="Inline color inserts">
+          <button type="button" data-insert="[white]">white</button>
+          <button type="button" data-insert="[green]">green</button>
+          <button type="button" data-insert="[amber]">amber</button>
+          <button type="button" data-insert="[red]">red</button>
+          <button type="button" data-insert="[blue]">blue</button>
+          <button type="button" data-insert="[violet]">violet</button>
+          <button type="button" data-insert="[/]">reset</button>
+        </div>
+
+        <div class="quick-send" aria-label="Quick test messages">
+          <button type="button" data-message="[green]S[amber]Y[blue]S[violet]T[green]E[amber]M[blue]S ONLINE ✅" data-kind="success" data-color="white">Systems Online</button>
+          <button type="button" data-message="[amber]SOUND CHECK 🛠️" data-kind="info" data-color="white">Sound Check</button>
+          <button type="button" data-message="[green]B[amber]U[blue]I[violet]L[green]D PASSED ✅" data-kind="build" data-color="white">Build Passed</button>
+        </div>
+
+      </form>
+
+      <section class="history" aria-labelledby="history-title">
+        <div class="history-head">
+          <h2 id="history-title">Recent Messages</h2>
+          <form method="post" action="/admin/clear">
+            <button class="secondary" type="submit">Clear Board</button>
+          </form>
+        </div>
+
+        {{if .Messages}}
+          <ol id="message-list" class="message-list">
+            {{range .Messages}}
+              <li>
+                <div class="message-text">{{.Text}}</div>
+                <div class="message-meta">
+                  <span>{{.CreatedAt}}</span>
+                  <span>{{.Source}}</span>
+                  <span>{{.Kind}}</span>
+                  <span>{{.Color}}</span>
+                  <span>{{.Status}}</span>
+                </div>
+              </li>
+            {{end}}
+          </ol>
+        {{else}}
+          <p id="empty-history" class="empty">No messages yet.</p>
+        {{end}}
+      </section>
+    </section>
+  </main>
+  <script src="/static/admin.js?v=4"></script>
+</body>
+</html>

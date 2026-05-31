@@ -1,0 +1,240 @@
+:root {
+  color-scheme: dark;
+  --bg: #10100e;
+  --panel: #191a16;
+  --tile: #24251f;
+  --tile-edge: #383a31;
+  --text: #f3ead0;
+  --muted: #9fa38f;
+  --accent: #d7b46a;
+  --good: #7fb685;
+  --flip: #3a3528;
+  --tile-fg: var(--text);
+  --tile-glow: rgba(243, 234, 208, 0.18);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 20px;
+  padding: clamp(16px, 3vw, 32px);
+}
+
+.is-embedded .shell {
+  min-height: 100vh;
+  grid-template-rows: 1fr;
+  padding: 12px;
+}
+
+.is-embedded .topbar {
+  display: none;
+}
+
+.is-embedded .board {
+  width: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.brand {
+  color: var(--text);
+}
+
+.topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sound-toggle {
+  appearance: none;
+  border: 1px solid var(--tile-edge);
+  background: var(--tile);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  min-width: 74px;
+  padding: 8px 10px;
+  text-transform: uppercase;
+}
+
+.topbar-link {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.topbar-link:hover {
+  color: var(--text);
+}
+
+.sound-toggle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.sound-toggle.is-on {
+  color: var(--good);
+}
+
+.connection {
+  color: var(--accent);
+}
+
+.connection.is-live {
+  color: var(--good);
+}
+
+.board {
+  align-self: center;
+  justify-self: center;
+  width: min(96vw, 1180px);
+  display: grid;
+  grid-template-columns: repeat(22, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+  gap: clamp(3px, 0.55vw, 8px);
+  aspect-ratio: 22 / 6;
+  padding: clamp(8px, 1.2vw, 16px);
+  background: var(--panel);
+  border: 1px solid var(--tile-edge);
+}
+
+.tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--tile);
+  border: 0;
+  color: var(--tile-fg);
+  font-size: clamp(12px, 3.3vw, 42px);
+  line-height: 1;
+  font-weight: 700;
+  text-shadow: 0 0 14px var(--tile-glow);
+}
+
+.tile::before {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto 0;
+  border-top: 1px solid rgba(243, 234, 208, 0.12);
+  pointer-events: none;
+}
+
+.tile.is-changing {
+  animation: flap var(--flap-duration, 180ms) ease-in-out;
+}
+
+.tile.is-space {
+  color: transparent;
+  text-shadow: none;
+}
+
+.tile.is-emoji {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-weight: 600;
+  text-shadow: none;
+}
+
+.tile.color-white {
+  --tile-fg: var(--text);
+  --tile-glow: rgba(243, 234, 208, 0.18);
+}
+
+.tile.color-green {
+  --tile-fg: #94d59b;
+  --tile-glow: rgba(148, 213, 155, 0.28);
+}
+
+.tile.color-amber {
+  --tile-fg: #e4bf72;
+  --tile-glow: rgba(228, 191, 114, 0.3);
+}
+
+.tile.color-red {
+  --tile-fg: #e98b7d;
+  --tile-glow: rgba(233, 139, 125, 0.3);
+}
+
+.tile.color-blue {
+  --tile-fg: #8fb9e8;
+  --tile-glow: rgba(143, 185, 232, 0.3);
+}
+
+.tile.color-violet {
+  --tile-fg: #c7a5ec;
+  --tile-glow: rgba(199, 165, 236, 0.3);
+}
+
+@keyframes flap {
+  0% {
+    transform: rotateX(0deg);
+    background: var(--tile);
+  }
+
+  45% {
+    transform: rotateX(82deg);
+    background: var(--flip);
+  }
+
+  100% {
+    transform: rotateX(0deg);
+    background: var(--tile);
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    gap: 14px;
+    padding: 12px;
+  }
+
+  .topbar {
+    font-size: 11px;
+  }
+
+  .topbar-status {
+    gap: 8px;
+  }
+
+  .sound-toggle {
+    font-size: 10px;
+    min-width: 64px;
+    padding: 7px 8px;
+  }
+
+  .board {
+    width: 100%;
+    gap: 3px;
+    padding: 6px;
+  }
+}

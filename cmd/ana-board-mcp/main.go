@@ -1,0 +1,547 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/georgestander/ana-board/internal/board"
+	"github.com/georgestander/ana-board/internal/capabilities"
+	"github.com/georgestander/ana-board/internal/client"
+	"github.com/georgestander/ana-board/internal/layout"
+	"github.com/georgestander/ana-board/internal/messages"
+)
+
+const protocolVersion = "2025-11-25"
+
+var supportedProtocolVersions = []string{"2025-11-25", "2025-06-18"}
+
+type rpcRequest struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id,omitempty"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params,omitempty"`
+}
+
+type rpcResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id"`
+	Result  any             `json:"result,omitempty"`
+	Error   *rpcError       `json:"error,omitempty"`
+}
+
+type rpcError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+type toolContent struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type toolResult struct {
+	Content           []toolContent `json:"content"`
+	StructuredContent any           `json:"structuredContent,omitempty"`
+	IsError           bool          `json:"isError,omitempty"`
+}
+
+type toolCallParams struct {
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+
+type sendArgs struct {
+	Text      string             `json:"text"`
+	Segments  []messages.Segment `json:"segments"`
+	Tiles     []messages.Tile    `json:"tiles"`
+	Source    string             `json:"source"`
+	Priority  string             `json:"priority"`
+	Animation string             `json:"animation"`
+	Kind      string             `json:"kind"`
+	Color     string             `json:"color"`
+}
+
+type initializeParams struct {
+	ProtocolVersion string `json:"protocolVersion"`
+}
+
+func main() {
+	baseURL := flag.String("url", defaultBaseURL(), "Ana Board URL")
+	flag.Parse()
+
+	boardClient, err := client.New(*baseURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ana-board-mcp: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := serve(os.Stdin, os.Stdout, boardClient); err != nil {
+		fmt.Fprintf(os.Stderr, "ana-board-mcp: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func serve(input *os.File, output *os.File, boardClient *client.Client) error {
+	scanner := bufio.NewScanner(input)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	encoder := json.NewEncoder(output)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		response := handleLine(line, boardClient)
+		if response == nil {
+			continue
+		}
+
+		if err := encoder.Encode(response); err != nil {
+			return err
+		}
+	}
+
+	return scanner.Err()
+}
+
+func handleLine(line string, boardClient *client.Client) *rpcResponse {
+	var req rpcRequest
+	if err := json.Unmarshal([]byte(line), &req); err != nil {
+		return errorResponse(nil, -32700, "parse error")
+	}
+	if len(req.ID) == 0 && strings.HasPrefix(req.Method, "notifications/") {
+		return nil
+	}
+	if req.JSONRPC != "2.0" {
+		return errorResponse(req.ID, -32600, "invalid JSON-RPC version")
+	}
+
+	switch req.Method {
+	case "initialize":
+		negotiatedProtocolVersion := negotiateProtocolVersion(req.Params)
+		return resultResponse(req.ID, map[string]any{
+			"protocolVersion": negotiatedProtocolVersion,
+			"capabilities": map[string]any{
+				"tools": map[string]any{},
+			},
+			"serverInfo": map[string]string{
+				"name":    "ana-board",
+				"version": "0.1.0",
+			},
+			"instructions": "Use ana_board_capabilities first. Send concise board-safe status updates. Native iOS/macOS emoji can be sent directly; there is no emoji whitelist. Use tiles JSON for exact per-letter color. Only row animation is supported.",
+		})
+	case "ping":
+		return resultResponse(req.ID, map[string]any{})
+	case "notifications/initialized":
+		return nil
+	case "tools/list":
+		return resultResponse(req.ID, map[string]any{"tools": tools()})
+	case "tools/call":
+		result := callTool(req.Params, boardClient)
+		return resultResponse(req.ID, result)
+	default:
+		return errorResponse(req.ID, -32601, "method not found")
+	}
+}
+
+func negotiateProtocolVersion(raw json.RawMessage) string {
+	var params initializeParams
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return protocolVersion
+	}
+
+	for _, supported := range supportedProtocolVersions {
+		if params.ProtocolVersion == supported {
+			return supported
+		}
+	}
+
+	return protocolVersion
+}
+
+func callTool(raw json.RawMessage, boardClient *client.Client) toolResult {
+	var params toolCallParams
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return textToolError("invalid tool call params: " + err.Error())
+	}
+
+	switch params.Name {
+	case "ana_board_capabilities":
+		return jsonToolResult(capabilities.Current())
+	case "ana_board_preview_message":
+		return previewTool(params.Arguments)
+	case "ana_board_send_message":
+		return sendTool(params.Arguments, boardClient)
+	case "ana_board_current":
+		resp, err := boardClient.CurrentFrame(context.Background())
+		if err != nil {
+			return textToolError(err.Error())
+		}
+		return jsonToolResult(resp)
+	case "ana_board_recent_messages":
+		return recentTool(params.Arguments, boardClient)
+	case "ana_board_clear":
+		return clearTool(params.Arguments, boardClient)
+	default:
+		return textToolError("unknown Ana Board tool: " + params.Name)
+	}
+}
+
+func previewTool(raw json.RawMessage) toolResult {
+	req, err := parseSendArgs(raw)
+	if err != nil {
+		return textToolError(err.Error())
+	}
+
+	cells, err := requestCells(req)
+	if err != nil {
+		return textToolError(err.Error())
+	}
+
+	frame, err := layout.CenterCells(cells)
+	if err != nil {
+		return textToolError(err.Error())
+	}
+
+	return jsonToolResult(frameToOutput(frame))
+}
+
+func sendTool(raw json.RawMessage, boardClient *client.Client) toolResult {
+	req, err := parseSendArgs(raw)
+	if err != nil {
+		return textToolError(err.Error())
+	}
+
+	resp, err := boardClient.SendMessage(context.Background(), req)
+	if err != nil {
+		return textToolError(err.Error())
+	}
+
+	return jsonToolResult(resp)
+}
+
+func recentTool(raw json.RawMessage, boardClient *client.Client) toolResult {
+	var args struct {
+		Limit *int `json:"limit"`
+	}
+	if len(raw) != 0 {
+		if err := json.Unmarshal(raw, &args); err != nil {
+			return textToolError("invalid recent messages arguments: " + err.Error())
+		}
+	}
+	limit := 10
+	if args.Limit != nil {
+		if *args.Limit <= 0 {
+			return textToolError("limit must be a positive integer")
+		}
+		limit = *args.Limit
+	}
+
+	resp, err := boardClient.ListMessages(context.Background(), limit)
+	if err != nil {
+		return textToolError(err.Error())
+	}
+
+	return jsonToolResult(resp)
+}
+
+func clearTool(raw json.RawMessage, boardClient *client.Client) toolResult {
+	var args struct {
+		Confirm bool `json:"confirm"`
+	}
+	if len(raw) != 0 {
+		if err := json.Unmarshal(raw, &args); err != nil {
+			return textToolError("invalid clear arguments: " + err.Error())
+		}
+	}
+	if !args.Confirm {
+		return textToolError("clear requires confirm=true")
+	}
+
+	resp, err := boardClient.Clear(context.Background())
+	if err != nil {
+		return textToolError(err.Error())
+	}
+
+	return jsonToolResult(resp)
+}
+
+func parseSendArgs(raw json.RawMessage) (messages.SubmitRequest, error) {
+	var args sendArgs
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return messages.SubmitRequest{}, fmt.Errorf("invalid message arguments: %w", err)
+	}
+
+	req := messages.SubmitRequest{
+		Text:      strings.TrimSpace(args.Text),
+		Segments:  args.Segments,
+		Tiles:     args.Tiles,
+		Source:    args.Source,
+		Priority:  args.Priority,
+		Animation: args.Animation,
+		Kind:      args.Kind,
+		Color:     args.Color,
+	}
+	if len(req.Tiles) != 0 && (req.Text != "" || len(req.Segments) != 0) {
+		return messages.SubmitRequest{}, fmt.Errorf("use either text, segments, or tiles")
+	}
+	if req.Text == "" && len(req.Segments) == 0 && len(req.Tiles) == 0 {
+		return messages.SubmitRequest{}, fmt.Errorf("text is required")
+	}
+
+	var err error
+	req.Source, err = messages.NormalizeSource(req.Source)
+	if err != nil {
+		return messages.SubmitRequest{}, err
+	}
+	req.Priority, err = messages.NormalizePriority(req.Priority)
+	if err != nil {
+		return messages.SubmitRequest{}, err
+	}
+	req.Animation, err = messages.NormalizeAnimation(req.Animation)
+	if err != nil {
+		return messages.SubmitRequest{}, err
+	}
+	req.Kind, err = messages.NormalizeKind(req.Kind)
+	if err != nil {
+		return messages.SubmitRequest{}, err
+	}
+	req.Color, err = messages.NormalizeColor(req.Color)
+	if err != nil {
+		return messages.SubmitRequest{}, err
+	}
+
+	return req, nil
+}
+
+func jsonToolResult(value any) toolResult {
+	text, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return textToolError(err.Error())
+	}
+
+	return toolResult{
+		Content: []toolContent{
+			{Type: "text", Text: string(text)},
+		},
+		StructuredContent: value,
+	}
+}
+
+func textToolError(text string) toolResult {
+	return toolResult{
+		Content: []toolContent{
+			{Type: "text", Text: text},
+		},
+		IsError: true,
+	}
+}
+
+func tools() []map[string]any {
+	messageSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"text":      map[string]string{"type": "string", "description": "Message text. Native iOS/macOS emoji can be used directly and each visible emoji grapheme counts as one tile. Inline color tokens like [green]A[red]B can color individual letters."},
+			"segments":  segmentSchema(),
+			"tiles":     tileSchema(),
+			"source":    map[string]string{"type": "string", "description": "Short sender name such as codex, hermes, claude, opencode."},
+			"kind":      map[string]any{"type": "string", "enum": messages.AllowedKinds()},
+			"color":     map[string]any{"type": "string", "enum": messages.AllowedColors(), "description": "Default color for tiles without an inline token, segment color, or tile color."},
+			"animation": map[string]any{"type": "string", "enum": messages.AllowedAnimations(), "description": "Only row is supported."},
+			"priority":  map[string]any{"type": "string", "enum": messages.AllowedPriorities()},
+		},
+	}
+
+	return []map[string]any{
+		{
+			"name":        "ana_board_capabilities",
+			"title":       "Ana Board Capabilities",
+			"description": "Read Ana Board limits, allowed colors, kinds, animations, native emoji support, and color syntax.",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
+			"annotations": map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		},
+		{
+			"name":        "ana_board_preview_message",
+			"title":       "Preview Ana Board Message",
+			"description": "Validate and preview how a message will fit before sending it.",
+			"inputSchema": messageSchema,
+			"annotations": map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		},
+		{
+			"name":        "ana_board_send_message",
+			"title":       "Send Ana Board Message",
+			"description": "Display a concise status message on Ana Board.",
+			"inputSchema": messageSchema,
+			"annotations": map[string]any{"readOnlyHint": false, "idempotentHint": false, "openWorldHint": false},
+		},
+		{
+			"name":        "ana_board_current",
+			"title":       "Current Ana Board Frame",
+			"description": "Read the current displayed board frame.",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
+			"annotations": map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		},
+		{
+			"name":        "ana_board_recent_messages",
+			"title":       "Recent Ana Board Messages",
+			"description": "Read recent Ana Board messages.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 50},
+				},
+			},
+			"annotations": map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		},
+		{
+			"name":        "ana_board_clear",
+			"title":       "Clear Ana Board",
+			"description": "Clear the displayed board. Requires confirm=true.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"confirm": map[string]any{"type": "boolean"},
+				},
+				"required": []string{"confirm"},
+			},
+			"annotations": map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false},
+		},
+	}
+}
+
+func segmentSchema() map[string]any {
+	return map[string]any{
+		"type":        "array",
+		"description": "Optional colored text segments. Use tiles instead when individual letters need different colors.",
+		"items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"text":  map[string]string{"type": "string"},
+				"color": map[string]any{"type": "string", "enum": messages.AllowedColors(), "description": "Color for tiles produced by this segment unless the segment text contains inline color tokens."},
+			},
+			"required": []string{"text"},
+		},
+	}
+}
+
+func tileSchema() map[string]any {
+	return map[string]any{
+		"type":        "array",
+		"description": "Exact tile list. Use this when each individual letter or emoji tile may have its own color.",
+		"items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"symbol": map[string]string{"type": "string", "description": "One visible tile: one letter, one digit, one punctuation mark, one space, or one native emoji grapheme."},
+				"color":  map[string]any{"type": "string", "enum": messages.AllowedColors()},
+			},
+			"required": []string{"symbol"},
+		},
+	}
+}
+
+func requestCells(req messages.SubmitRequest) ([]board.Cell, error) {
+	if len(req.Tiles) != 0 {
+		cells := make([]board.Cell, 0, len(req.Tiles))
+		for _, tile := range req.Tiles {
+			color, err := messages.NormalizeColor(tile.Color)
+			if err != nil {
+				return nil, err
+			}
+			if tile.Color == "" {
+				color = req.Color
+			}
+
+			cell, err := normalizeTileCell(tile.Symbol, color)
+			if err != nil {
+				return nil, err
+			}
+			cells = append(cells, cell)
+		}
+
+		return cells, nil
+	}
+
+	if len(req.Segments) == 0 {
+		return board.NormalizeCells(req.Text, req.Color)
+	}
+
+	segments := make([]board.TextSegment, len(req.Segments))
+	for index, segment := range req.Segments {
+		segments[index] = board.TextSegment{Text: segment.Text, Color: segment.Color}
+	}
+
+	return board.NormalizeSegmentCells(segments, req.Color)
+}
+
+func normalizeTileCell(symbol, color string) (board.Cell, error) {
+	if symbol == " " {
+		return board.NewCell(" ", color), nil
+	}
+
+	cells, err := board.NormalizeCells(symbol, color)
+	if err != nil {
+		return board.Cell{}, err
+	}
+	if len(cells) != 1 {
+		return board.Cell{}, fmt.Errorf("tile symbol %q must normalize to exactly one tile", symbol)
+	}
+
+	return cells[0], nil
+}
+
+func frameToOutput(frame board.Frame) client.FrameResponse {
+	cells := make([][]string, frame.Rows)
+	colors := make([][]string, frame.Rows)
+	for row := range cells {
+		cells[row] = make([]string, frame.Cols)
+		colors[row] = make([]string, frame.Cols)
+		for col := range cells[row] {
+			cell, err := frame.CellAt(row, col)
+			if err != nil {
+				cells[row][col] = " "
+				colors[row][col] = board.DefaultColor
+				continue
+			}
+			cells[row][col] = cell.Symbol
+			colors[row][col] = cell.Color
+		}
+	}
+
+	return client.FrameResponse{
+		Rows:   frame.Rows,
+		Cols:   frame.Cols,
+		Cells:  cells,
+		Colors: colors,
+	}
+}
+
+func resultResponse(id json.RawMessage, result any) *rpcResponse {
+	return &rpcResponse{JSONRPC: "2.0", ID: id, Result: result}
+}
+
+func errorResponse(id json.RawMessage, code int, message string) *rpcResponse {
+	if len(id) == 0 {
+		id = []byte("null")
+	}
+
+	return &rpcResponse{
+		JSONRPC: "2.0",
+		ID:      id,
+		Error:   &rpcError{Code: code, Message: message},
+	}
+}
+
+func defaultBaseURL() string {
+	value := os.Getenv("ANA_BOARD_URL")
+	if strings.TrimSpace(value) == "" {
+		return client.DefaultBaseURL
+	}
+
+	return value
+}
