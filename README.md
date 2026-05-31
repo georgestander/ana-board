@@ -52,6 +52,18 @@ Make sure Go's bin directory is on `PATH`:
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
+## Upgrade
+
+Upgrade all three binaries together:
+
+```sh
+go install github.com/georgestander/ana-board/cmd/ana-board@latest
+go install github.com/georgestander/ana-board/cmd/ana-boardctl@latest
+go install github.com/georgestander/ana-board/cmd/ana-board-mcp@latest
+```
+
+Then restart the running `ana-board` server process. Updating `ana-boardctl` or `ana-board-mcp` does not update an already-running board server.
+
 ## Run
 
 ```sh
