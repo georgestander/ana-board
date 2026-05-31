@@ -48,3 +48,24 @@ func TestHandleLineNegotiatesSupportedProtocolVersion(t *testing.T) {
 		t.Fatalf("protocolVersion = %q, want 2025-06-18", result.ProtocolVersion)
 	}
 }
+
+func TestParseSendArgsSupportsExactPlacements(t *testing.T) {
+	req, err := parseSendArgs([]byte(`{"placements":[{"row":0,"col":0,"symbol":"A","color":"green"}],"source":"codex"}`))
+	if err != nil {
+		t.Fatalf("parseSendArgs returned error: %v", err)
+	}
+
+	if len(req.Placements) != 1 {
+		t.Fatalf("placements = %d, want 1", len(req.Placements))
+	}
+	if req.Placements[0].Symbol != "A" {
+		t.Fatalf("symbol = %q, want A", req.Placements[0].Symbol)
+	}
+}
+
+func TestParseSendArgsRejectsMixedTextAndFrame(t *testing.T) {
+	_, err := parseSendArgs([]byte(`{"text":"hello","frame":{"cells":[]}}`))
+	if err == nil {
+		t.Fatal("parseSendArgs returned nil error, want mixed payload error")
+	}
+}

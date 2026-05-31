@@ -101,6 +101,8 @@ ana-boardctl preview "[blue]HELLO WORLD 🌍"
 ana-boardctl send --source codex --kind success "[green]BUILD PASSED ✅"
 ana-boardctl send --tiles-json '[{"symbol":"A","color":"green"},{"symbol":"N","color":"amber"},{"symbol":"A","color":"red"}]'
 ana-boardctl send --segments-json '[{"text":"ANA ","color":"green"},{"text":"READY ✅","color":"blue"}]'
+ana-boardctl frame --placements-json '[{"row":0,"col":0,"symbol":"A","color":"green"},{"row":5,"col":21,"symbol":"✅","color":"blue"}]'
+ana-boardctl send --at "2026-05-31T18:30:00+02:00" "[amber]REMINDER ⏰"
 ```
 
 Use a remote/private board URL:
@@ -174,7 +176,10 @@ Do not expose this unauthenticated API on the public internet yet. Keep it priva
 - Exact per-tile color can be sent with JSON `tiles`: `[{"symbol":"A","color":"green"},{"symbol":"N","color":"amber"},{"symbol":"A","color":"red"}]`.
 - Quick text can color individual letters with inline tokens: `[green]A[amber]N[red]A [blue]READY`.
 - Agents can also send JSON `segments` when phrases share a color: `[{"text":"OK ","color":"green"},{"text":"FAIL","color":"red"}]`.
+- Exact sparse placement can be sent with JSON `placements`: `[{"row":0,"col":0,"symbol":"A","color":"green"}]`.
+- Full exact frames can be sent with JSON `frame`: `cells` must be 6 rows x 22 columns; `colors` is optional and must match the same shape.
 - The `color` metadata field is only the default for tiles without an inline token or segment color.
+- Optional exact-time sending is client-side: `ana-boardctl send --at ...` waits until that time, then sends.
 
 Metadata:
 

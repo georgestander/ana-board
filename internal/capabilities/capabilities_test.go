@@ -23,4 +23,8 @@ func TestCurrentDescribesNativeEmojiAndPerTileColor(t *testing.T) {
 	if !strings.Contains(caps.Text.ColorSyntax, "default for untagged tiles") {
 		t.Fatalf("ColorSyntax = %q, want default-color guidance", caps.Text.ColorSyntax)
 	}
+
+	if !strings.Contains(caps.ExactFrame.PlacementSyntax, "Rows are 0-5") {
+		t.Fatalf("PlacementSyntax = %q, want row/column guidance", caps.ExactFrame.PlacementSyntax)
+	}
 }

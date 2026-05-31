@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/georgestander/ana-board/internal/board"
 	"github.com/georgestander/ana-board/internal/capabilities"
@@ -35,6 +36,8 @@ func run(args []string) error {
 		return runPreview(args[1:])
 	case "send":
 		return runSend(args[1:])
+	case "frame":
+		return runFrame(args[1:])
 	case "current":
 		return runCurrent(args[1:])
 	case "recent":
@@ -71,23 +74,18 @@ func runCapabilities(args []string) error {
 }
 
 func runPreview(args []string) error {
-	req, jsonOut, _, err := parseMessageCommand("preview", args)
+	parsed, err := parseMessageCommand("preview", args)
 	if err != nil {
 		return err
 	}
 
-	cells, err := requestCells(req)
-	if err != nil {
-		return err
-	}
-
-	frame, err := layout.CenterCells(cells)
+	frame, err := requestFrame(parsed.Request)
 	if err != nil {
 		return err
 	}
 
 	out := frameToOutput(frame)
-	if jsonOut {
+	if parsed.JSONOut {
 		return printJSON(out)
 	}
 
@@ -95,6 +93,25 @@ func runPreview(args []string) error {
 		fmt.Println(strings.Join(row, ""))
 	}
 	return nil
+}
+
+func requestFrame(req messages.SubmitRequest) (board.Frame, error) {
+	if len(req.Placements) != 0 {
+		frame, _, _, err := layout.ExactFrameFromPlacements(req.Placements, req.Color)
+		return frame, err
+	}
+
+	if req.Frame != nil {
+		frame, _, _, err := layout.ExactFrameFromInput(*req.Frame, req.Color)
+		return frame, err
+	}
+
+	cells, err := requestCells(req)
+	if err != nil {
+		return board.Frame{}, err
+	}
+
+	return layout.CenterCells(cells)
 }
 
 func requestCells(req messages.SubmitRequest) ([]board.Cell, error) {
@@ -109,7 +126,7 @@ func requestCells(req messages.SubmitRequest) ([]board.Cell, error) {
 				color = req.Color
 			}
 
-			cell, err := normalizeTileCell(tile.Symbol, color)
+			cell, err := layout.NormalizeTileCell(tile.Symbol, color)
 			if err != nil {
 				return nil, err
 			}
@@ -131,43 +148,62 @@ func requestCells(req messages.SubmitRequest) ([]board.Cell, error) {
 	return board.NormalizeSegmentCells(segments, req.Color)
 }
 
-func normalizeTileCell(symbol, color string) (board.Cell, error) {
-	if symbol == " " {
-		return board.NewCell(" ", color), nil
-	}
-
-	cells, err := board.NormalizeCells(symbol, color)
-	if err != nil {
-		return board.Cell{}, err
-	}
-	if len(cells) != 1 {
-		return board.Cell{}, fmt.Errorf("tile symbol %q must normalize to exactly one tile", symbol)
-	}
-
-	return cells[0], nil
-}
-
 func runSend(args []string) error {
-	req, jsonOut, baseURL, err := parseMessageCommand("send", args)
+	parsed, err := parseMessageCommand("send", args)
 	if err != nil {
 		return err
 	}
 
-	boardClient, err := client.New(baseURL)
+	if err := waitUntil(parsed.At); err != nil {
+		return err
+	}
+
+	boardClient, err := client.New(parsed.BaseURL)
 	if err != nil {
 		return err
 	}
 
-	resp, err := boardClient.SendMessage(context.Background(), req)
+	resp, err := boardClient.SendMessage(context.Background(), parsed.Request)
 	if err != nil {
 		return err
 	}
 
-	if jsonOut {
+	if parsed.JSONOut {
 		return printJSON(resp)
 	}
 
 	fmt.Printf("sent %s from %s\n", resp.ID, resp.Message.Source)
+	return nil
+}
+
+func runFrame(args []string) error {
+	parsed, err := parseMessageCommand("frame", args)
+	if err != nil {
+		return err
+	}
+	if len(parsed.Request.Placements) == 0 && parsed.Request.Frame == nil {
+		return fmt.Errorf("frame requires --placements-json or --frame-json")
+	}
+
+	if err := waitUntil(parsed.At); err != nil {
+		return err
+	}
+
+	boardClient, err := client.New(parsed.BaseURL)
+	if err != nil {
+		return err
+	}
+
+	resp, err := boardClient.SendMessage(context.Background(), parsed.Request)
+	if err != nil {
+		return err
+	}
+
+	if parsed.JSONOut {
+		return printJSON(resp)
+	}
+
+	fmt.Printf("sent frame %s from %s\n", resp.ID, resp.Message.Source)
 	return nil
 }
 
@@ -261,7 +297,14 @@ func runClear(args []string) error {
 	return nil
 }
 
-func parseMessageCommand(name string, args []string) (messages.SubmitRequest, bool, string, error) {
+type parsedMessageCommand struct {
+	Request messages.SubmitRequest
+	JSONOut bool
+	BaseURL string
+	At      string
+}
+
+func parseMessageCommand(name string, args []string) (parsedMessageCommand, error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	animation := fs.String("animation", messages.DefaultAnimation, "animation: row")
 	color := fs.String("color", messages.DefaultColor, "default color for untagged tiles")
@@ -271,19 +314,30 @@ func parseMessageCommand(name string, args []string) (messages.SubmitRequest, bo
 	baseURL := fs.String("url", defaultBaseURL(), "board URL")
 	segmentsJSON := fs.String("segments-json", "", "JSON array of colored text segments")
 	tilesJSON := fs.String("tiles-json", "", "JSON array of exact per-tile symbols and colors")
+	placementsJSON := fs.String("placements-json", "", "JSON array of row/col tile placements")
+	frameJSON := fs.String("frame-json", "", "JSON object with 6x22 cells and optional colors")
+	at := fs.String("at", "", "optional exact send time, RFC3339 or local 'YYYY-MM-DD HH:MM[:SS]'")
 	jsonOut := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args); err != nil {
-		return messages.SubmitRequest{}, false, "", err
+		return parsedMessageCommand{}, err
 	}
 
 	text := strings.TrimSpace(strings.Join(fs.Args(), " "))
 	hasSegments := strings.TrimSpace(*segmentsJSON) != ""
 	hasTiles := strings.TrimSpace(*tilesJSON) != ""
-	if text == "" && !hasSegments && !hasTiles {
-		return messages.SubmitRequest{}, false, "", fmt.Errorf("%s requires message text", name)
+	hasPlacements := strings.TrimSpace(*placementsJSON) != ""
+	hasFrame := strings.TrimSpace(*frameJSON) != ""
+	payloadCount := 0
+	for _, hasPayload := range []bool{text != "", hasSegments, hasTiles, hasPlacements, hasFrame} {
+		if hasPayload {
+			payloadCount++
+		}
 	}
-	if hasTiles && (text != "" || hasSegments) {
-		return messages.SubmitRequest{}, false, "", fmt.Errorf("use either text, --segments-json, or --tiles-json")
+	if payloadCount == 0 {
+		return parsedMessageCommand{}, fmt.Errorf("%s requires message text, --segments-json, --tiles-json, --placements-json, or --frame-json", name)
+	}
+	if payloadCount > 1 {
+		return parsedMessageCommand{}, fmt.Errorf("use either text, --segments-json, --tiles-json, --placements-json, or --frame-json")
 	}
 
 	req := messages.SubmitRequest{
@@ -296,38 +350,106 @@ func parseMessageCommand(name string, args []string) (messages.SubmitRequest, bo
 	}
 	if hasSegments {
 		if err := json.Unmarshal([]byte(*segmentsJSON), &req.Segments); err != nil {
-			return messages.SubmitRequest{}, false, "", fmt.Errorf("invalid --segments-json: %w", err)
+			return parsedMessageCommand{}, fmt.Errorf("invalid --segments-json: %w", err)
 		}
 	}
 	if hasTiles {
 		if err := json.Unmarshal([]byte(*tilesJSON), &req.Tiles); err != nil {
-			return messages.SubmitRequest{}, false, "", fmt.Errorf("invalid --tiles-json: %w", err)
+			return parsedMessageCommand{}, fmt.Errorf("invalid --tiles-json: %w", err)
 		}
+	}
+	if hasPlacements {
+		if err := json.Unmarshal([]byte(*placementsJSON), &req.Placements); err != nil {
+			return parsedMessageCommand{}, fmt.Errorf("invalid --placements-json: %w", err)
+		}
+	}
+	if hasFrame {
+		var frame messages.FrameInput
+		if err := json.Unmarshal([]byte(*frameJSON), &frame); err != nil {
+			return parsedMessageCommand{}, fmt.Errorf("invalid --frame-json: %w", err)
+		}
+		req.Frame = &frame
 	}
 
 	var err error
 	req.Source, err = messages.NormalizeSource(req.Source)
 	if err != nil {
-		return messages.SubmitRequest{}, false, "", err
+		return parsedMessageCommand{}, err
 	}
 	req.Priority, err = messages.NormalizePriority(req.Priority)
 	if err != nil {
-		return messages.SubmitRequest{}, false, "", err
+		return parsedMessageCommand{}, err
 	}
 	req.Animation, err = messages.NormalizeAnimation(req.Animation)
 	if err != nil {
-		return messages.SubmitRequest{}, false, "", err
+		return parsedMessageCommand{}, err
 	}
 	req.Kind, err = messages.NormalizeKind(req.Kind)
 	if err != nil {
-		return messages.SubmitRequest{}, false, "", err
+		return parsedMessageCommand{}, err
 	}
 	req.Color, err = messages.NormalizeColor(req.Color)
 	if err != nil {
-		return messages.SubmitRequest{}, false, "", err
+		return parsedMessageCommand{}, err
 	}
 
-	return req, *jsonOut, *baseURL, nil
+	return parsedMessageCommand{
+		Request: req,
+		JSONOut: *jsonOut,
+		BaseURL: *baseURL,
+		At:      strings.TrimSpace(*at),
+	}, nil
+}
+
+func waitUntil(raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+
+	target, err := parseExactTime(raw, time.Now())
+	if err != nil {
+		return err
+	}
+
+	delay := time.Until(target)
+	if delay <= 0 {
+		return fmt.Errorf("--at time must be in the future")
+	}
+
+	fmt.Fprintf(os.Stderr, "waiting until %s\n", target.Format(time.RFC3339))
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	<-timer.C
+	return nil
+}
+
+func parseExactTime(raw string, now time.Time) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, fmt.Errorf("--at time is required")
+	}
+
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		parsed, err := time.Parse(layout, raw)
+		if err == nil {
+			if !parsed.After(now) {
+				return time.Time{}, fmt.Errorf("--at time must be in the future")
+			}
+			return parsed, nil
+		}
+	}
+
+	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02 15:04"} {
+		parsed, err := time.ParseInLocation(layout, raw, time.Local)
+		if err == nil {
+			if !parsed.After(now) {
+				return time.Time{}, fmt.Errorf("--at time must be in the future")
+			}
+			return parsed, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("--at must be RFC3339 or local time like 2026-05-31 18:30:00")
 }
 
 func frameToOutput(frame board.Frame) client.FrameResponse {
@@ -380,6 +502,9 @@ Commands:
   send [--url URL] [--source SOURCE] [--kind KIND] "[green]BUILD PASSED ✅"
   send --tiles-json '[{"symbol":"A","color":"green"},{"symbol":"N","color":"amber"},{"symbol":"A","color":"red"}]'
   send --segments-json '[{"text":"OK ","color":"green"},{"text":"FAIL","color":"red"}]'
+  frame --placements-json '[{"row":0,"col":0,"symbol":"A","color":"green"}]'
+  frame --frame-json '{"cells":[["A",... 22 columns],... 6 rows]}'
+  send --at "2026-05-31T18:30:00+02:00" "[amber]REMINDER ⏰"
   current [--url URL] [--json]
   recent [--url URL] [--limit N] [--json]
   clear [--url URL] --confirm
@@ -390,5 +515,7 @@ Environment:
 Notes:
   Native iOS/macOS emoji can be pasted directly; aliases are optional shortcuts.
   Only row animation is supported.
-  --color is only the default. Use --tiles-json for exact per-letter color, or [green] inline tokens for quick text.`)
+  --color is only the default. Use --tiles-json for exact per-letter color, or [green] inline tokens for quick text.
+  Use --placements-json or --frame-json when the agent needs exact row/column control.
+  --at waits client-side, then sends at that exact time.`)
 }

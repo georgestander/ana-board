@@ -231,30 +231,27 @@ func (s *Server) createMessage(ctx context.Context, req createMessageRequest) (c
 		return createMessageResponse{}, err
 	}
 
-	cells, storedSegments, storedTiles, displayText, err := normalizeMessagePayload(req)
+	frame, storedSegments, storedTiles, storedPlacements, storedFrame, displayText, err := normalizeMessagePayload(req)
 	if err != nil {
 		return createMessageResponse{}, err
 	}
 	req.Text = displayText
 
-	frame, err := layout.CenterCells(cells)
-	if err != nil {
-		return createMessageResponse{}, err
-	}
-
 	now := time.Now().UTC()
 	msg := messages.Message{
-		ID:        fmt.Sprintf("msg_%d", now.UnixNano()),
-		Text:      req.Text,
-		Segments:  storedSegments,
-		Tiles:     storedTiles,
-		Source:    req.Source,
-		Priority:  req.Priority,
-		Animation: req.Animation,
-		Kind:      req.Kind,
-		Color:     req.Color,
-		CreatedAt: now,
-		Status:    "displayed",
+		ID:         fmt.Sprintf("msg_%d", now.UnixNano()),
+		Text:       req.Text,
+		Segments:   storedSegments,
+		Tiles:      storedTiles,
+		Placements: storedPlacements,
+		Frame:      storedFrame,
+		Source:     req.Source,
+		Priority:   req.Priority,
+		Animation:  req.Animation,
+		Kind:       req.Kind,
+		Color:      req.Color,
+		CreatedAt:  now,
+		Status:     "displayed",
 	}
 
 	if err := s.store.SaveMessage(ctx, msg); err != nil {
@@ -280,26 +277,74 @@ func (s *Server) createMessage(ctx context.Context, req createMessageRequest) (c
 	}, nil
 }
 
-func normalizeMessagePayload(req createMessageRequest) ([]board.Cell, []messages.Segment, []messages.Tile, string, error) {
+func normalizeMessagePayload(req createMessageRequest) (board.Frame, []messages.Segment, []messages.Tile, []messages.PlacedTile, *messages.FrameInput, string, error) {
+	payloadCount := 0
+	if req.Text != "" {
+		payloadCount++
+	}
+	if len(req.Segments) != 0 {
+		payloadCount++
+	}
 	if len(req.Tiles) != 0 {
-		if req.Text != "" || len(req.Segments) != 0 {
-			return nil, nil, nil, "", fmt.Errorf("send either text, segments, or tiles, not more than one")
+		payloadCount++
+	}
+	if len(req.Placements) != 0 {
+		payloadCount++
+	}
+	if req.Frame != nil {
+		payloadCount++
+	}
+	if payloadCount == 0 {
+		return board.Frame{}, nil, nil, nil, nil, "", fmt.Errorf("text is required")
+	}
+	if payloadCount > 1 {
+		return board.Frame{}, nil, nil, nil, nil, "", fmt.Errorf("send either text, segments, tiles, placements, or frame, not more than one")
+	}
+
+	if len(req.Placements) != 0 {
+		frame, placements, text, err := layout.ExactFrameFromPlacements(req.Placements, req.Color)
+		if err != nil {
+			return board.Frame{}, nil, nil, nil, nil, "", err
 		}
 
-		return normalizeMessageTiles(req.Tiles, req.Color)
+		return frame, nil, nil, placements, nil, text, nil
+	}
+
+	if req.Frame != nil {
+		frame, storedFrame, text, err := layout.ExactFrameFromInput(*req.Frame, req.Color)
+		if err != nil {
+			return board.Frame{}, nil, nil, nil, nil, "", err
+		}
+
+		return frame, nil, nil, nil, &storedFrame, text, nil
+	}
+
+	if len(req.Tiles) != 0 {
+		cells, storedTiles, text, err := normalizeMessageTiles(req.Tiles, req.Color)
+		if err != nil {
+			return board.Frame{}, nil, nil, nil, nil, "", err
+		}
+
+		frame, err := layout.CenterCells(cells)
+		if err != nil {
+			return board.Frame{}, nil, nil, nil, nil, "", err
+		}
+
+		return frame, nil, storedTiles, nil, nil, text, nil
 	}
 
 	if len(req.Segments) == 0 {
-		if req.Text == "" {
-			return nil, nil, nil, "", fmt.Errorf("text is required")
-		}
-
 		cells, err := board.NormalizeCells(req.Text, req.Color)
 		if err != nil {
-			return nil, nil, nil, "", err
+			return board.Frame{}, nil, nil, nil, nil, "", err
 		}
 
-		return cells, nil, nil, req.Text, nil
+		frame, err := layout.CenterCells(cells)
+		if err != nil {
+			return board.Frame{}, nil, nil, nil, nil, "", err
+		}
+
+		return frame, nil, nil, nil, nil, req.Text, nil
 	}
 
 	segments := make([]board.TextSegment, 0, len(req.Segments))
@@ -313,7 +358,7 @@ func normalizeMessagePayload(req createMessageRequest) ([]board.Cell, []messages
 
 		color, err := messages.NormalizeColor(segment.Color)
 		if err != nil {
-			return nil, nil, nil, "", err
+			return board.Frame{}, nil, nil, nil, nil, "", err
 		}
 		if segment.Color == "" {
 			color = req.Color
@@ -325,18 +370,23 @@ func normalizeMessagePayload(req createMessageRequest) ([]board.Cell, []messages
 	}
 
 	if len(segments) == 0 {
-		return nil, nil, nil, "", fmt.Errorf("text is required")
+		return board.Frame{}, nil, nil, nil, nil, "", fmt.Errorf("text is required")
 	}
 
 	cells, err := board.NormalizeSegmentCells(segments, req.Color)
 	if err != nil {
-		return nil, nil, nil, "", err
+		return board.Frame{}, nil, nil, nil, nil, "", err
 	}
 
-	return cells, stored, nil, text.String(), nil
+	frame, err := layout.CenterCells(cells)
+	if err != nil {
+		return board.Frame{}, nil, nil, nil, nil, "", err
+	}
+
+	return frame, stored, nil, nil, nil, text.String(), nil
 }
 
-func normalizeMessageTiles(tiles []messages.Tile, defaultColor string) ([]board.Cell, []messages.Segment, []messages.Tile, string, error) {
+func normalizeMessageTiles(tiles []messages.Tile, defaultColor string) ([]board.Cell, []messages.Tile, string, error) {
 	cells := make([]board.Cell, 0, len(tiles))
 	stored := make([]messages.Tile, 0, len(tiles))
 	var text strings.Builder
@@ -344,15 +394,15 @@ func normalizeMessageTiles(tiles []messages.Tile, defaultColor string) ([]board.
 	for _, tile := range tiles {
 		color, err := messages.NormalizeColor(tile.Color)
 		if err != nil {
-			return nil, nil, nil, "", err
+			return nil, nil, "", err
 		}
 		if tile.Color == "" {
 			color = defaultColor
 		}
 
-		cell, err := normalizeTileCell(tile.Symbol, color)
+		cell, err := layout.NormalizeTileCell(tile.Symbol, color)
 		if err != nil {
-			return nil, nil, nil, "", err
+			return nil, nil, "", err
 		}
 
 		cells = append(cells, cell)
@@ -361,26 +411,10 @@ func normalizeMessageTiles(tiles []messages.Tile, defaultColor string) ([]board.
 	}
 
 	if len(cells) == 0 {
-		return nil, nil, nil, "", fmt.Errorf("text is required")
+		return nil, nil, "", fmt.Errorf("text is required")
 	}
 
-	return cells, nil, stored, text.String(), nil
-}
-
-func normalizeTileCell(symbol, color string) (board.Cell, error) {
-	if symbol == " " {
-		return board.NewCell(" ", color), nil
-	}
-
-	cells, err := board.NormalizeCells(symbol, color)
-	if err != nil {
-		return board.Cell{}, err
-	}
-	if len(cells) != 1 {
-		return board.Cell{}, fmt.Errorf("tile symbol %q must normalize to exactly one tile", symbol)
-	}
-
-	return cells[0], nil
+	return cells, stored, text.String(), nil
 }
 
 func (s *Server) clearCurrentFrame(ctx context.Context, animation string) (board.Frame, error) {

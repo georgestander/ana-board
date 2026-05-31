@@ -56,14 +56,16 @@ type toolCallParams struct {
 }
 
 type sendArgs struct {
-	Text      string             `json:"text"`
-	Segments  []messages.Segment `json:"segments"`
-	Tiles     []messages.Tile    `json:"tiles"`
-	Source    string             `json:"source"`
-	Priority  string             `json:"priority"`
-	Animation string             `json:"animation"`
-	Kind      string             `json:"kind"`
-	Color     string             `json:"color"`
+	Text       string                `json:"text"`
+	Segments   []messages.Segment    `json:"segments"`
+	Tiles      []messages.Tile       `json:"tiles"`
+	Placements []messages.PlacedTile `json:"placements"`
+	Frame      *messages.FrameInput  `json:"frame"`
+	Source     string                `json:"source"`
+	Priority   string                `json:"priority"`
+	Animation  string                `json:"animation"`
+	Kind       string                `json:"kind"`
+	Color      string                `json:"color"`
 }
 
 type initializeParams struct {
@@ -132,9 +134,9 @@ func handleLine(line string, boardClient *client.Client) *rpcResponse {
 			},
 			"serverInfo": map[string]string{
 				"name":    "ana-board",
-				"version": "0.1.0",
+				"version": "0.2.0",
 			},
-			"instructions": "Use ana_board_capabilities first. Send concise board-safe status updates. Native iOS/macOS emoji can be sent directly; there is no emoji whitelist. Use tiles JSON for exact per-letter color. Only row animation is supported.",
+			"instructions": "Use ana_board_capabilities first. Send concise board-safe status updates. Native iOS/macOS emoji can be sent directly; there is no emoji whitelist. Use tiles JSON for exact per-letter color, or placements/frame JSON for exact row and column control. Only row animation is supported.",
 		})
 	case "ping":
 		return resultResponse(req.ID, map[string]any{})
@@ -199,12 +201,7 @@ func previewTool(raw json.RawMessage) toolResult {
 		return textToolError(err.Error())
 	}
 
-	cells, err := requestCells(req)
-	if err != nil {
-		return textToolError(err.Error())
-	}
-
-	frame, err := layout.CenterCells(cells)
+	frame, err := requestFrame(req)
 	if err != nil {
 		return textToolError(err.Error())
 	}
@@ -279,20 +276,29 @@ func parseSendArgs(raw json.RawMessage) (messages.SubmitRequest, error) {
 	}
 
 	req := messages.SubmitRequest{
-		Text:      strings.TrimSpace(args.Text),
-		Segments:  args.Segments,
-		Tiles:     args.Tiles,
-		Source:    args.Source,
-		Priority:  args.Priority,
-		Animation: args.Animation,
-		Kind:      args.Kind,
-		Color:     args.Color,
+		Text:       strings.TrimSpace(args.Text),
+		Segments:   args.Segments,
+		Tiles:      args.Tiles,
+		Placements: args.Placements,
+		Frame:      args.Frame,
+		Source:     args.Source,
+		Priority:   args.Priority,
+		Animation:  args.Animation,
+		Kind:       args.Kind,
+		Color:      args.Color,
 	}
-	if len(req.Tiles) != 0 && (req.Text != "" || len(req.Segments) != 0) {
-		return messages.SubmitRequest{}, fmt.Errorf("use either text, segments, or tiles")
+
+	payloadCount := 0
+	for _, hasPayload := range []bool{req.Text != "", len(req.Segments) != 0, len(req.Tiles) != 0, len(req.Placements) != 0, req.Frame != nil} {
+		if hasPayload {
+			payloadCount++
+		}
 	}
-	if req.Text == "" && len(req.Segments) == 0 && len(req.Tiles) == 0 {
+	if payloadCount == 0 {
 		return messages.SubmitRequest{}, fmt.Errorf("text is required")
+	}
+	if payloadCount > 1 {
+		return messages.SubmitRequest{}, fmt.Errorf("use either text, segments, tiles, placements, or frame")
 	}
 
 	var err error
@@ -347,14 +353,16 @@ func tools() []map[string]any {
 	messageSchema := map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"text":      map[string]string{"type": "string", "description": "Message text. Native iOS/macOS emoji can be used directly and each visible emoji grapheme counts as one tile. Inline color tokens like [green]A[red]B can color individual letters."},
-			"segments":  segmentSchema(),
-			"tiles":     tileSchema(),
-			"source":    map[string]string{"type": "string", "description": "Short sender name such as codex, hermes, claude, opencode."},
-			"kind":      map[string]any{"type": "string", "enum": messages.AllowedKinds()},
-			"color":     map[string]any{"type": "string", "enum": messages.AllowedColors(), "description": "Default color for tiles without an inline token, segment color, or tile color."},
-			"animation": map[string]any{"type": "string", "enum": messages.AllowedAnimations(), "description": "Only row is supported."},
-			"priority":  map[string]any{"type": "string", "enum": messages.AllowedPriorities()},
+			"text":       map[string]string{"type": "string", "description": "Message text. Native iOS/macOS emoji can be used directly and each visible emoji grapheme counts as one tile. Inline color tokens like [green]A[red]B can color individual letters."},
+			"segments":   segmentSchema(),
+			"tiles":      tileSchema(),
+			"placements": placementSchema(),
+			"frame":      frameSchema(),
+			"source":     map[string]string{"type": "string", "description": "Short sender name such as codex, hermes, claude, opencode."},
+			"kind":       map[string]any{"type": "string", "enum": messages.AllowedKinds()},
+			"color":      map[string]any{"type": "string", "enum": messages.AllowedColors(), "description": "Default color for tiles without an inline token, segment color, or tile color."},
+			"animation":  map[string]any{"type": "string", "enum": messages.AllowedAnimations(), "description": "Only row is supported."},
+			"priority":   map[string]any{"type": "string", "enum": messages.AllowedPriorities()},
 		},
 	}
 
@@ -369,14 +377,14 @@ func tools() []map[string]any {
 		{
 			"name":        "ana_board_preview_message",
 			"title":       "Preview Ana Board Message",
-			"description": "Validate and preview how a message will fit before sending it.",
+			"description": "Validate and preview how a message or exact frame will fit before sending it.",
 			"inputSchema": messageSchema,
 			"annotations": map[string]any{"readOnlyHint": true, "openWorldHint": false},
 		},
 		{
 			"name":        "ana_board_send_message",
 			"title":       "Send Ana Board Message",
-			"description": "Display a concise status message on Ana Board.",
+			"description": "Display a concise status message or exact placed frame on Ana Board.",
 			"inputSchema": messageSchema,
 			"annotations": map[string]any{"readOnlyHint": false, "idempotentHint": false, "openWorldHint": false},
 		},
@@ -445,6 +453,54 @@ func tileSchema() map[string]any {
 	}
 }
 
+func placementSchema() map[string]any {
+	return map[string]any{
+		"type":        "array",
+		"description": "Exact sparse tile placements. Use this when the agent needs row and column control. Rows are 0-5 and columns are 0-21.",
+		"items": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"row":    map[string]any{"type": "integer", "minimum": 0, "maximum": board.DefaultRows - 1},
+				"col":    map[string]any{"type": "integer", "minimum": 0, "maximum": board.DefaultCols - 1},
+				"symbol": map[string]string{"type": "string", "description": "One visible tile: one letter, one digit, one punctuation mark, one space, or one native emoji grapheme."},
+				"color":  map[string]any{"type": "string", "enum": messages.AllowedColors()},
+			},
+			"required": []string{"row", "col", "symbol"},
+		},
+	}
+}
+
+func frameSchema() map[string]any {
+	return map[string]any{
+		"type":        "object",
+		"description": "Full exact frame. cells must be a 6 row x 22 column array. colors is optional but must be the same shape when provided.",
+		"properties": map[string]any{
+			"cells":  map[string]any{"type": "array", "description": "6 rows x 22 columns of symbols. Empty strings are treated as blank tiles."},
+			"colors": map[string]any{"type": "array", "description": "Optional 6 rows x 22 columns of tile colors."},
+		},
+		"required": []string{"cells"},
+	}
+}
+
+func requestFrame(req messages.SubmitRequest) (board.Frame, error) {
+	if len(req.Placements) != 0 {
+		frame, _, _, err := layout.ExactFrameFromPlacements(req.Placements, req.Color)
+		return frame, err
+	}
+
+	if req.Frame != nil {
+		frame, _, _, err := layout.ExactFrameFromInput(*req.Frame, req.Color)
+		return frame, err
+	}
+
+	cells, err := requestCells(req)
+	if err != nil {
+		return board.Frame{}, err
+	}
+
+	return layout.CenterCells(cells)
+}
+
 func requestCells(req messages.SubmitRequest) ([]board.Cell, error) {
 	if len(req.Tiles) != 0 {
 		cells := make([]board.Cell, 0, len(req.Tiles))
@@ -457,7 +513,7 @@ func requestCells(req messages.SubmitRequest) ([]board.Cell, error) {
 				color = req.Color
 			}
 
-			cell, err := normalizeTileCell(tile.Symbol, color)
+			cell, err := layout.NormalizeTileCell(tile.Symbol, color)
 			if err != nil {
 				return nil, err
 			}
@@ -477,22 +533,6 @@ func requestCells(req messages.SubmitRequest) ([]board.Cell, error) {
 	}
 
 	return board.NormalizeSegmentCells(segments, req.Color)
-}
-
-func normalizeTileCell(symbol, color string) (board.Cell, error) {
-	if symbol == " " {
-		return board.NewCell(" ", color), nil
-	}
-
-	cells, err := board.NormalizeCells(symbol, color)
-	if err != nil {
-		return board.Cell{}, err
-	}
-	if len(cells) != 1 {
-		return board.Cell{}, fmt.Errorf("tile symbol %q must normalize to exactly one tile", symbol)
-	}
-
-	return cells[0], nil
 }
 
 func frameToOutput(frame board.Frame) client.FrameResponse {

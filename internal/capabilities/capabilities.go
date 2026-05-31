@@ -8,6 +8,7 @@ import (
 type Capabilities struct {
 	Board        BoardInfo                `json:"board"`
 	Text         TextInfo                 `json:"text"`
+	ExactFrame   ExactFrameInfo           `json:"exact_frame"`
 	Colors       []string                 `json:"colors"`
 	Kinds        []string                 `json:"kinds"`
 	Animations   []string                 `json:"animations"`
@@ -30,6 +31,12 @@ type TextInfo struct {
 	BestPractice      string `json:"best_practice"`
 }
 
+type ExactFrameInfo struct {
+	PlacementSyntax string `json:"placement_syntax"`
+	FrameSyntax     string `json:"frame_syntax"`
+	TimeSyntax      string `json:"time_syntax"`
+}
+
 func Current() Capabilities {
 	return Capabilities{
 		Board: BoardInfo{
@@ -41,7 +48,12 @@ func Current() Capabilities {
 			AllowedCharacters: `A-Z 0-9 space . , ! ? : - / ' " plus native emoji grapheme clusters`,
 			EmojiSupport:      "Native iOS/macOS emoji are accepted directly. There is no emoji whitelist; each visible grapheme cluster counts as one tile. Aliases such as :rocket: are optional shortcuts only.",
 			ColorSyntax:       "Each tile can have its own color. Use tiles JSON for exact per-letter color, or inline tokens such as [green]A[amber]N[red]A for quick text. The message color field is only the default for untagged tiles.",
-			BestPractice:      "Use row animation. Keep updates short, concrete, and useful. Use per-tile color and native emoji as signal, not decoration.",
+			BestPractice:      "Use row animation. Keep updates short, concrete, and useful. Use placements or frame only when exact row and column control matters.",
+		},
+		ExactFrame: ExactFrameInfo{
+			PlacementSyntax: `Use placements JSON for sparse exact control: [{"row":0,"col":0,"symbol":"A","color":"green"}]. Rows are 0-5 and columns are 0-21.`,
+			FrameSyntax:     "Use frame JSON for a full exact board: cells is 6 rows x 22 columns; colors is optional and must be the same shape when provided.",
+			TimeSyntax:      `ana-boardctl supports optional client-side exact-time sending with --at "2026-05-31T18:30:00+02:00" or the scripts/ana-board-at helper.`,
 		},
 		Colors:       messages.AllowedColors(),
 		Kinds:        messages.AllowedKinds(),
@@ -53,6 +65,7 @@ func Current() Capabilities {
 			{Text: "[green]B[amber]U[blue]I[violet]L[green]D PASSED ✅", Source: "codex", Priority: messages.DefaultPriority, Kind: "success", Color: "white", Animation: "row"},
 			{Text: "[amber]EMAIL NEEDS REPLY ✉️", Source: "hermes", Priority: messages.DefaultPriority, Kind: "email", Color: "white", Animation: "row"},
 			{Text: "[blue]D[green]E[amber]P[red]L[violet]O[blue]Y COMPLETE 🚀", Source: "ci", Priority: messages.DefaultPriority, Kind: "deploy", Color: "white", Animation: "row"},
+			{Placements: []messages.PlacedTile{{Row: 0, Col: 0, Symbol: "A", Color: "green"}, {Row: 5, Col: 21, Symbol: "✅", Color: "blue"}}, Source: "codex", Priority: messages.DefaultPriority, Kind: "info", Color: "white", Animation: "row"},
 		},
 	}
 }
