@@ -28,7 +28,7 @@ Agent or script
   -> browser split-flap display
 ```
 
-Ana Board is intentionally local-first. Run the display where you can see it, then let remote agents reach it over a private network such as Tailscale. It is not ready to expose as a public unauthenticated web service.
+Ana Board is intentionally local-first. Run the display where you can see it, then let remote agents reach it over a private network. It is not ready to expose as a public unauthenticated web service.
 
 Pieces:
 
@@ -76,66 +76,6 @@ From a local clone:
 ```sh
 go run ./cmd/ana-board
 ```
-
-## Mac + Tailscale + Hermes
-
-Use this when Hermes is running on a Vultr VM and the board display is on your Mac.
-
-1. Install Tailscale on your Mac:
-
-```sh
-brew install --cask tailscale
-open /Applications/Tailscale.app
-```
-
-Log in to Tailscale and make sure your Vultr VM is in the same tailnet.
-
-2. Get your Mac's Tailscale IP:
-
-```sh
-tailscale ip -4
-```
-
-3. Run Ana Board on that private Tailscale IP:
-
-```sh
-ANA_BOARD_ADDR=<mac-tailscale-ip>:18080 ana-board
-```
-
-Use the Tailscale IP here, not `127.0.0.1`, when a remote machine such as Vultr needs to connect. Binding to `127.0.0.1` only accepts connections from the Mac itself.
-
-4. Open the board:
-
-```text
-http://<mac-tailscale-ip>:18080
-http://<mac-tailscale-ip>:18080/admin
-```
-
-5. On the Vultr VM, install the sender tools:
-
-```sh
-go install github.com/georgestander/ana-board/cmd/ana-boardctl@latest
-go install github.com/georgestander/ana-board/cmd/ana-board-mcp@latest
-export PATH="$PATH:$(go env GOPATH)/bin"
-```
-
-6. Point Hermes at your Mac:
-
-```sh
-export ANA_BOARD_URL=http://<mac-tailscale-ip>:18080
-ana-boardctl send --source hermes --kind task "[green]HERMES CONNECTED ✅"
-```
-
-If Hermes can ping the Mac but `ana-boardctl send` says `connection refused`, Tailscale routing is working but Ana Board is not listening on the Tailscale address. On the Mac, check:
-
-```sh
-lsof -nP -iTCP:18080 -sTCP:LISTEN
-curl http://<mac-tailscale-ip>:18080/healthz
-```
-
-The listener should show `<mac-tailscale-ip>:18080`, not only `127.0.0.1:18080`.
-
-See [docs/hermes-vultr.md](docs/hermes-vultr.md) for the longer setup.
 
 ## Send A Message
 
@@ -210,15 +150,13 @@ OpenCode:
 }
 ```
 
-Hermes on a Vultr VM can run the MCP process locally on that VM and point it at the board over a private Tailscale address:
+Remote agents can run the MCP process locally and point it at a private board URL:
 
 ```sh
 ANA_BOARD_URL=http://ana-board-host:18080 ana-board-mcp
 ```
 
-For the full Vultr setup, see [docs/hermes-vultr.md](docs/hermes-vultr.md).
-
-Do not expose this unauthenticated API with Tailscale Funnel or a public Cloudflare Tunnel yet. Keep it private on localhost or a tightly scoped tailnet.
+Do not expose this unauthenticated API on the public internet yet. Keep it private on localhost or a tightly scoped private network.
 
 ## Message Limits
 
