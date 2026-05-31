@@ -4,9 +4,9 @@ Ana Board is a small Go-powered split-flap style status board for agents, automa
 
 It runs as one local Go server with a browser display, an admin panel, a command-line sender, and a stdio MCP server for tools like Codex, Claude Code, OpenCode, and remote agents such as Hermes.
 
-[![Ana Board demo](assets/anaboard-demo.jpg)](assets/anaboard-demo.mp4)
+[![Ana Board demo](assets/anaboard-demo.jpg)](https://www.youtube.com/watch?v=J5JMXApnEPc)
 
-[Watch the demo video](assets/anaboard-demo.mp4)
+[Watch the demo video](https://www.youtube.com/watch?v=J5JMXApnEPc)
 
 ## About
 
