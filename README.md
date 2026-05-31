@@ -4,6 +4,34 @@ Ana Board is a small Go-powered split-flap style status board for agents, automa
 
 It runs as one local Go server with a browser display, an admin panel, a command-line sender, and a stdio MCP server for tools like Codex, Claude Code, OpenCode, and remote agents such as Hermes.
 
+## About
+
+Ana Board is a private status display for the small signals that should interrupt you gently:
+
+- agent progress updates
+- reminders
+- email/task nudges
+- CI/build/deploy status
+- approval requests
+- quick personal automations
+
+The usual setup is:
+
+```text
+Agent or script
+  -> ana-boardctl or ana-board-mcp
+  -> private Ana Board HTTP API
+  -> browser split-flap display
+```
+
+Ana Board is intentionally local-first. Run the display where you can see it, then let remote agents reach it over a private network such as Tailscale. It is not ready to expose as a public unauthenticated web service.
+
+Pieces:
+
+- `ana-board`: local web server, display, admin panel, HTTP API, SSE stream
+- `ana-boardctl`: CLI sender for scripts, cron, CI, and remote shells
+- `ana-board-mcp`: stdio MCP server for Codex, Claude Code, OpenCode, Hermes-style agents
+
 ## Install
 
 Install Go 1.22 or newer, then install the three binaries:
@@ -44,6 +72,55 @@ From a local clone:
 ```sh
 go run ./cmd/ana-board
 ```
+
+## Mac + Tailscale + Hermes
+
+Use this when Hermes is running on a Vultr VM and the board display is on your Mac.
+
+1. Install Tailscale on your Mac:
+
+```sh
+brew install --cask tailscale
+open /Applications/Tailscale.app
+```
+
+Log in to Tailscale and make sure your Vultr VM is in the same tailnet.
+
+2. Get your Mac's Tailscale IP:
+
+```sh
+tailscale ip -4
+```
+
+3. Run Ana Board on that private Tailscale IP:
+
+```sh
+ANA_BOARD_ADDR=<mac-tailscale-ip>:18080 ana-board
+```
+
+4. Open the board:
+
+```text
+http://<mac-tailscale-ip>:18080
+http://<mac-tailscale-ip>:18080/admin
+```
+
+5. On the Vultr VM, install the sender tools:
+
+```sh
+go install github.com/georgestander/ana-board/cmd/ana-boardctl@latest
+go install github.com/georgestander/ana-board/cmd/ana-board-mcp@latest
+export PATH="$PATH:$(go env GOPATH)/bin"
+```
+
+6. Point Hermes at your Mac:
+
+```sh
+export ANA_BOARD_URL=http://<mac-tailscale-ip>:18080
+ana-boardctl send --source hermes --kind task "[green]HERMES CONNECTED ✅"
+```
+
+See [docs/hermes-vultr.md](docs/hermes-vultr.md) for the longer setup.
 
 ## Send A Message
 
