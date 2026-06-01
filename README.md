@@ -83,6 +83,12 @@ The server binds to `127.0.0.1:8080` by default. Use another bind address or por
 ANA_BOARD_ADDR=127.0.0.1:18080 ana-board
 ```
 
+Bind an additional local or private address when the same board should be reachable through more than one interface:
+
+```sh
+ANA_BOARD_ADDR=<board-private-ip>:18080 ANA_BOARD_EXTRA_ADDRS=127.0.0.1:18080 ana-board
+```
+
 From a local clone:
 
 ```sh
