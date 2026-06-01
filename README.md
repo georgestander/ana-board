@@ -89,6 +89,39 @@ From a local clone:
 go run ./cmd/ana-board
 ```
 
+## Private Network Access
+
+Use this when the board is running on one machine and an agent, script, or server on another private machine needs to send updates to it. This can be a VPN, tailnet, VPC, WireGuard network, or any private network you control.
+
+On the board machine, find the private IP address that the other machine can reach. Then bind Ana Board to that private address:
+
+```sh
+ANA_BOARD_ADDR=<board-private-ip>:18080 ana-board
+```
+
+Open the board from a browser that can reach that private network:
+
+```text
+http://<board-private-ip>:18080
+http://<board-private-ip>:18080/admin
+```
+
+On the sender machine, point the CLI or MCP server at that board URL:
+
+```sh
+export ANA_BOARD_URL=http://<board-private-ip>:18080
+ana-boardctl send --source agent --kind task "[green]AGENT CONNECTED ✅"
+```
+
+If the sender can ping the board machine but cannot send messages, check that Ana Board is listening on the private IP rather than only `127.0.0.1`:
+
+```sh
+lsof -nP -iTCP:18080 -sTCP:LISTEN
+curl http://<board-private-ip>:18080/healthz
+```
+
+Do not expose Ana Board's unauthenticated write API on the public internet. Keep it on localhost or a private network you control.
+
 ## Send A Message
 
 From the browser, use:
