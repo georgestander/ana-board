@@ -100,7 +100,7 @@ func TestBuildQueuedEventDropsBlandTurnEnded(t *testing.T) {
 
 func TestBuildQueuedEventDetectsRequestUserInputQuestion(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
-	event, ok, err := BuildQueuedEvent("PostToolUse", []byte(`{"tool_name":"request_user_input","cwd":"/Users/georgestander/Documents/ana-board","thread_id":"planning-thread-secret"}`), now)
+	event, ok, err := BuildQueuedEvent("PostToolUse", []byte(`{"tool_name":"request_user_input","questions":[{"header":"Scope","id":"release_scope"}],"cwd":"/Users/georgestander/Documents/ana-board","thread_id":"planning-thread-secret"}`), now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,6 +112,9 @@ func TestBuildQueuedEventDetectsRequestUserInputQuestion(t *testing.T) {
 	}
 	if event.Context.Project != "ANA" {
 		t.Fatalf("project = %q, want ANA", event.Context.Project)
+	}
+	if event.Context.Topic != "SCOPE" {
+		t.Fatalf("topic = %q, want SCOPE", event.Context.Topic)
 	}
 
 	action, ok := Decide(event, State{}, testConfig(t, now))
@@ -125,14 +128,14 @@ func TestBuildQueuedEventDetectsRequestUserInputQuestion(t *testing.T) {
 	if req.Kind != "task" || req.Priority != "high" || req.Color != "amber" {
 		t.Fatalf("request = %+v", req)
 	}
-	if len(req.Placements) == 0 {
-		t.Fatal("expected a block-art frame")
+	if len(req.Placements) < 40 {
+		t.Fatalf("expected a rich block-art frame, got %d placements", len(req.Placements))
 	}
 	rendered := renderedRequestText(req)
-	if !strings.Contains(rendered, "ANA") || !strings.Contains(rendered, "QUESTION") || !strings.Contains(rendered, "ANSWERNEEDED") || !strings.Contains(rendered, "❓") {
+	if !strings.Contains(rendered, "ANA") || !strings.Contains(rendered, "SCOPE") || !strings.Contains(rendered, "UNSTICK") || !strings.Contains(rendered, "❓") {
 		t.Fatalf("question frame missing useful context: %q", rendered)
 	}
-	if strings.Contains(rendered, "secret") || strings.Contains(rendered, "/Users/georgestander") {
+	if strings.Contains(rendered, "secret") || strings.Contains(rendered, "/Users/georgestander") || strings.Contains(rendered, "release") {
 		t.Fatalf("question frame leaked raw context: %q", rendered)
 	}
 }

@@ -3,6 +3,7 @@ package codexbridge
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -24,6 +25,12 @@ func extractTextFields(payload []byte) ([]textField, error) {
 
 	var fields []textField
 	collectTextFields(decoded, "", &fields)
+	sort.Slice(fields, func(i, j int) bool {
+		if fields[i].Key == fields[j].Key {
+			return fields[i].Text < fields[j].Text
+		}
+		return fields[i].Key < fields[j].Key
+	})
 	return fields, nil
 }
 

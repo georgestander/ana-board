@@ -10,6 +10,7 @@ import (
 type Context struct {
 	Project string `json:"project,omitempty"`
 	Thread  string `json:"thread,omitempty"`
+	Topic   string `json:"topic,omitempty"`
 }
 
 func (context Context) DisplayLabel() string {
@@ -30,6 +31,7 @@ func (context Context) DisplayLabel() string {
 
 func extractContext(fields []textField) Context {
 	var context Context
+	bestTopicPriority := 0
 	for _, field := range fields {
 		key := strings.ToLower(field.Key)
 		text := strings.TrimSpace(field.Text)
@@ -43,6 +45,10 @@ func extractContext(fields []textField) Context {
 		}
 		if context.Thread == "" && isThreadKey(key) {
 			context.Thread = "T" + shortHash(text, 4)
+		}
+		if topic, priority, ok := topicCandidate(key, text); ok && (bestTopicPriority == 0 || priority < bestTopicPriority) {
+			context.Topic = topic
+			bestTopicPriority = priority
 		}
 	}
 	return context
@@ -63,6 +69,71 @@ func isThreadKey(key string) bool {
 		return false
 	}
 	return strings.Contains(key, "thread") || strings.Contains(key, "session") || strings.Contains(key, "conversation")
+}
+
+func topicCandidate(key, text string) (string, int, bool) {
+	if isCWDKey(key) || isThreadKey(key) || isSensitiveTopicKey(key) {
+		return "", 0, false
+	}
+
+	priority := 0
+	for _, part := range strings.Split(key, ".") {
+		switch part {
+		case "header":
+			priority = minPositive(priority, 1)
+		case "title":
+			priority = minPositive(priority, 2)
+		case "id":
+			priority = minPositive(priority, 3)
+		case "tool_name", "tool":
+			priority = minPositive(priority, 4)
+		}
+	}
+	if priority == 0 {
+		return "", 0, false
+	}
+
+	topic := topicLabelFromText(text)
+	if topic == "" {
+		return "", 0, false
+	}
+	return topic, priority, true
+}
+
+func isSensitiveTopicKey(key string) bool {
+	for _, part := range []string{
+		"prompt",
+		"message",
+		"last_message",
+		"body",
+		"content",
+		"text",
+		"url",
+		"token",
+		"secret",
+		"password",
+		"path",
+	} {
+		if strings.Contains(key, part) {
+			return true
+		}
+	}
+	return false
+}
+
+func topicLabelFromText(text string) string {
+	lower := strings.ToLower(text)
+	if strings.Contains(lower, "request_user_input") || strings.Contains(lower, "ask_user") {
+		return "USER INPUT"
+	}
+	return compactPhraseLabel(text, 15)
+}
+
+func minPositive(current, candidate int) int {
+	if current == 0 || candidate < current {
+		return candidate
+	}
+	return current
 }
 
 func projectLabelFromPath(path string) string {
@@ -93,6 +164,32 @@ func compactLabel(value string, max int) string {
 	for _, token := range tokens {
 		if joined.Len()+len(token) > max {
 			break
+		}
+		joined.WriteString(token)
+	}
+	if joined.Len() == 0 {
+		return trimLabel(tokens[0], max)
+	}
+	return joined.String()
+}
+
+func compactPhraseLabel(value string, max int) string {
+	tokens := labelTokens(value)
+	if len(tokens) == 0 {
+		return ""
+	}
+
+	var joined strings.Builder
+	for _, token := range tokens {
+		nextLength := len(token)
+		if joined.Len() > 0 {
+			nextLength++
+		}
+		if joined.Len()+nextLength > max {
+			break
+		}
+		if joined.Len() > 0 {
+			joined.WriteByte(' ')
 		}
 		joined.WriteString(token)
 	}

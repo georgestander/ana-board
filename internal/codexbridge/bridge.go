@@ -168,6 +168,9 @@ func BuildQueuedEvent(eventName string, payload []byte, now time.Time) (QueuedEv
 	}
 
 	eventContext := extractContext(fields)
+	if !signal.Question {
+		eventContext.Topic = ""
+	}
 	digest := eventDigest(eventName, signal, eventContext)
 	receivedAt := now.UTC()
 	id := fmt.Sprintf("%s%09dZ-%d-%s", receivedAt.Format("20060102T150405"), receivedAt.Nanosecond(), os.Getpid(), digest[:10])
@@ -541,6 +544,10 @@ func requestForKind(kind string, event QueuedEvent, source string) messages.Subm
 }
 
 func composeFrame(kind string, event QueuedEvent) ([]messages.PlacedTile, bool) {
+	if kind == "question" {
+		return composeQuestionFrame(event)
+	}
+
 	label := event.Context.DisplayLabel()
 	lines := frameLines(kind, label)
 	icon := iconPattern(kind)
@@ -564,28 +571,120 @@ func composeFrame(kind string, event QueuedEvent) ([]messages.PlacedTile, bool) 
 		}
 	}
 
-	textColor := textColorForKind(kind)
 	for index, line := range lines {
-		row := []int{1, 3, 5}[index]
-		symbols, err := board.NormalizeSymbols(line)
-		if err != nil {
+		if !addTextLine(&placements, []int{1, 3, 5}[index], 7, board.DefaultCols-7, line, textColorForKind(kind)) {
 			return nil, false
-		}
-		symbols = fitSymbols(symbols, board.DefaultCols-7)
-		for colOffset, symbol := range symbols {
-			if symbol == " " {
-				continue
-			}
-			placements = append(placements, messages.PlacedTile{
-				Row:    row,
-				Col:    7 + colOffset,
-				Symbol: symbol,
-				Color:  textColor,
-			})
 		}
 	}
 
 	return placements, len(placements) != 0
+}
+
+func composeQuestionFrame(event QueuedEvent) ([]messages.PlacedTile, bool) {
+	placements := make([]messages.PlacedTile, 0, 120)
+	header := questionHeader(event.Context)
+	topic := strings.TrimSpace(event.Context.Topic)
+	if topic == "" {
+		topic = "OPEN QUESTION"
+	}
+
+	if !addTextLine(&placements, 0, 0, board.DefaultCols, header, "blue") {
+		return nil, false
+	}
+
+	icon := []string{
+		".AAA.",
+		"A...A",
+		"...A.",
+		"..AA.",
+		"..A..",
+		".....",
+		"..V..",
+	}
+	for rowOffset, line := range icon {
+		for colOffset, marker := range line {
+			color, ok := iconColors[marker]
+			if !ok {
+				continue
+			}
+			placements = append(placements, messages.PlacedTile{
+				Row:    2 + rowOffset,
+				Col:    1 + colOffset,
+				Symbol: "█",
+				Color:  color,
+			})
+		}
+	}
+
+	lines := questionLines(event.Digest)
+	textLines := []struct {
+		row   int
+		text  string
+		color string
+	}{
+		{1, lines[0], "amber"},
+		{2, lines[1], "amber"},
+		{3, lines[2], "amber"},
+		{5, "RE: " + topic, "blue"},
+		{7, lines[3], "violet"},
+	}
+	for _, line := range textLines {
+		if !addTextLine(&placements, line.row, 7, board.DefaultCols-7, line.text, line.color) {
+			return nil, false
+		}
+	}
+	if !addTextLine(&placements, 9, 1, board.DefaultCols-2, "ANSWER TO UNSTICK", "amber") {
+		return nil, false
+	}
+
+	return placements, len(placements) != 0
+}
+
+func addTextLine(placements *[]messages.PlacedTile, row, col, max int, text, color string) bool {
+	symbols, err := board.NormalizeSymbols(text)
+	if err != nil {
+		return false
+	}
+	symbols = fitSymbols(symbols, max)
+	for colOffset, symbol := range symbols {
+		if symbol == " " {
+			continue
+		}
+		*placements = append(*placements, messages.PlacedTile{
+			Row:    row,
+			Col:    col + colOffset,
+			Symbol: symbol,
+			Color:  color,
+		})
+	}
+	return true
+}
+
+func questionHeader(context Context) string {
+	label := context.DisplayLabel()
+	topic := strings.TrimSpace(context.Topic)
+	if topic == "" {
+		return label
+	}
+	header := label + " " + topic
+	symbols, err := board.NormalizeSymbols(header)
+	if err == nil && len(symbols) <= board.DefaultCols {
+		return header
+	}
+	return label
+}
+
+func questionLines(digest string) []string {
+	variants := [][]string{
+		{"CODEX NEEDS", "YOUR ANSWER", "FOR YOU ❓", "PICK A DOOR"},
+		{"PLAN TOOL", "IS WAVING", "AT YOU ❓", "YOUR MOVE"},
+		{"HOLD UP", "YOU DECIDE", "THIS BIT ❓", "SEND VERDICT"},
+		{"THREAD PAUSED", "ON A QUESTION", "FROM ME ❓", "YOUR CALL"},
+	}
+	if digest == "" {
+		return variants[0]
+	}
+	return variants[int(digest[0])%len(variants)]
 }
 
 func fitSymbols(symbols []string, max int) []string {
