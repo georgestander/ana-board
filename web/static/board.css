@@ -118,9 +118,9 @@ body {
   width: min(96vw, 1180px);
   display: grid;
   grid-template-columns: repeat(22, minmax(0, 1fr));
-  grid-template-rows: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(10, minmax(0, 1fr));
   gap: clamp(3px, 0.55vw, 8px);
-  aspect-ratio: 22 / 6;
+  aspect-ratio: 22 / 10;
   padding: clamp(8px, 1.2vw, 16px);
   background: var(--panel);
   border: 1px solid var(--tile-edge);

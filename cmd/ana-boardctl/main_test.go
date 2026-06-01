@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/georgestander/ana-board/internal/art"
+	"github.com/georgestander/ana-board/internal/board"
 )
 
 func TestParseMessageCommandSupportsExactPlacements(t *testing.T) {
@@ -62,7 +63,7 @@ func TestParseMessageCommandSupportsImage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
-	img := image.NewNRGBA(image.Rect(0, 0, 22, 6))
+	img := image.NewNRGBA(image.Rect(0, 0, board.DefaultCols, board.DefaultRows))
 	img.SetNRGBA(0, 0, color.NRGBA{R: 228, G: 191, B: 114, A: 255})
 	if err := png.Encode(file, img); err != nil {
 		t.Fatalf("png.Encode returned error: %v", err)

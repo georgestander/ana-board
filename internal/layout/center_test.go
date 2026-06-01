@@ -1,10 +1,15 @@
 package layout
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/georgestander/ana-board/internal/board"
 )
+
+func centeredStartRow(lineCount int) int {
+	return (board.DefaultRows - lineCount) / 2
+}
 
 func TestCenterTextCentersShortMessage(t *testing.T) {
 	frame, err := CenterText("hello")
@@ -20,13 +25,13 @@ func TestCenterTextCentersShortMessage(t *testing.T) {
 	}{
 		{
 			name: "first letter",
-			row:  2,
+			row:  centeredStartRow(1),
 			col:  8,
 			want: "H",
 		},
 		{
 			name: "last letter",
-			row:  2,
+			row:  centeredStartRow(1),
 			col:  12,
 			want: "O",
 		},
@@ -101,13 +106,13 @@ func TestCenterTextCentersWrappedMessage(t *testing.T) {
 	}{
 		{
 			name: "first line starts centered",
-			row:  2,
+			row:  centeredStartRow(2),
 			col:  1,
 			want: "H",
 		},
 		{
 			name: "second line starts centered",
-			row:  3,
+			row:  centeredStartRow(2) + 1,
 			col:  5,
 			want: "S",
 		},
@@ -133,7 +138,7 @@ func TestCenterTextPlacesNativeEmojiAsOneTileWithPerTileColor(t *testing.T) {
 		t.Fatalf("CenterTextWithColor returned error: %v", err)
 	}
 
-	first, err := frame.CellAt(2, 7)
+	first, err := frame.CellAt(centeredStartRow(1), 7)
 	if err != nil {
 		t.Fatalf("CellAt returned error: %v", err)
 	}
@@ -141,7 +146,7 @@ func TestCenterTextPlacesNativeEmojiAsOneTileWithPerTileColor(t *testing.T) {
 		t.Fatalf("first cell = %#v, want green H", first)
 	}
 
-	cell, err := frame.CellAt(2, 13)
+	cell, err := frame.CellAt(centeredStartRow(1), 13)
 	if err != nil {
 		t.Fatalf("CellAt returned error: %v", err)
 	}
@@ -164,7 +169,7 @@ func TestCenterSegmentsAppliesPerTileColors(t *testing.T) {
 		t.Fatalf("CenterSegments returned error: %v", err)
 	}
 
-	first, err := frame.CellAt(2, 5)
+	first, err := frame.CellAt(centeredStartRow(1), 5)
 	if err != nil {
 		t.Fatalf("CellAt returned error: %v", err)
 	}
@@ -172,7 +177,7 @@ func TestCenterSegmentsAppliesPerTileColors(t *testing.T) {
 		t.Fatalf("first = %#v, want green A", first)
 	}
 
-	emoji, err := frame.CellAt(2, 15)
+	emoji, err := frame.CellAt(centeredStartRow(1), 15)
 	if err != nil {
 		t.Fatalf("CellAt returned error: %v", err)
 	}
@@ -182,7 +187,7 @@ func TestCenterSegmentsAppliesPerTileColors(t *testing.T) {
 }
 
 func TestCenterTextRejectsTooManyLines(t *testing.T) {
-	_, err := CenterText("ABCDEFGHIJKLMNOPQRSTUV ABCDEFGHIJKLMNOPQRSTUV ABCDEFGHIJKLMNOPQRSTUV ABCDEFGHIJKLMNOPQRSTUV ABCDEFGHIJKLMNOPQRSTUV ABCDEFGHIJKLMNOPQRSTUV ABCDEFGHIJKLMNOPQRSTUV")
+	_, err := CenterText(strings.TrimSpace(strings.Repeat("ABCDEFGHIJKLMNOPQRSTUV ", board.DefaultRows+1)))
 	if err == nil {
 		t.Fatal("expected error")
 	}

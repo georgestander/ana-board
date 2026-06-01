@@ -57,9 +57,9 @@ func TestSpriteFrameRejectsUnknownName(t *testing.T) {
 
 func TestImageFrameMapsOpaquePixelsToNearestPaletteColor(t *testing.T) {
 	var buf bytes.Buffer
-	img := image.NewNRGBA(image.Rect(0, 0, 22, 6))
-	for y := 0; y < 6; y++ {
-		for x := 0; x < 22; x++ {
+	img := image.NewNRGBA(image.Rect(0, 0, board.DefaultCols, board.DefaultRows))
+	for y := 0; y < board.DefaultRows; y++ {
+		for x := 0; x < board.DefaultCols; x++ {
 			img.SetNRGBA(x, y, color.NRGBA{R: 148, G: 213, B: 155, A: 255})
 		}
 	}
@@ -82,7 +82,7 @@ func TestImageFrameMapsOpaquePixelsToNearestPaletteColor(t *testing.T) {
 
 func TestImageFrameTreatsTransparentPixelsAsBlank(t *testing.T) {
 	var buf bytes.Buffer
-	img := image.NewNRGBA(image.Rect(0, 0, 22, 6))
+	img := image.NewNRGBA(image.Rect(0, 0, board.DefaultCols, board.DefaultRows))
 	if err := png.Encode(&buf, img); err != nil {
 		t.Fatalf("png.Encode returned error: %v", err)
 	}

@@ -20,7 +20,7 @@ import (
 )
 
 const protocolVersion = "2025-11-25"
-const serverVersion = "0.3.0"
+const serverVersion = "0.4.0"
 const maxRequestLineBytes = 1024 * 1024
 const maxRecentMessages = 50
 
@@ -541,7 +541,7 @@ func tools() []map[string]any {
 		{
 			"name":        "ana_board_preview_sprite",
 			"title":       "Preview Ana Board Sprite",
-			"description": "Preview a named block-art sprite as a 6x22 colored frame.",
+			"description": "Preview a named block-art sprite as a 10x22 colored frame.",
 			"inputSchema": spriteMessageSchema,
 			"annotations": map[string]any{"readOnlyHint": true, "openWorldHint": false},
 		},
@@ -620,7 +620,7 @@ func tileSchema() map[string]any {
 func placementSchema() map[string]any {
 	return map[string]any{
 		"type":        "array",
-		"description": "Exact sparse tile placements. Use this when the agent needs row and column control. Rows are 0-5 and columns are 0-21.",
+		"description": "Exact sparse tile placements. Use this when the agent needs row and column control. Rows are 0-9 and columns are 0-21.",
 		"items": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -637,10 +637,10 @@ func placementSchema() map[string]any {
 func frameSchema() map[string]any {
 	return map[string]any{
 		"type":        "object",
-		"description": "Full exact frame. cells must be a 6 row x 22 column array. colors is optional but must be the same shape when provided.",
+		"description": "Full exact frame. cells must be a 10 row x 22 column array. colors is optional but must be the same shape when provided.",
 		"properties": map[string]any{
-			"cells":  map[string]any{"type": "array", "description": "6 rows x 22 columns of symbols. Empty strings are treated as blank tiles."},
-			"colors": map[string]any{"type": "array", "description": "Optional 6 rows x 22 columns of tile colors."},
+			"cells":  map[string]any{"type": "array", "description": "10 rows x 22 columns of symbols. Empty strings are treated as blank tiles."},
+			"colors": map[string]any{"type": "array", "description": "Optional 10 rows x 22 columns of tile colors."},
 		},
 		"required": []string{"cells"},
 	}

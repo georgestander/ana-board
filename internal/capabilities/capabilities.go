@@ -60,8 +60,8 @@ func Current() Capabilities {
 			BestPractice:      "Use row animation. Keep updates short, concrete, and useful. Use sprites for tiny block art, and placements or frame when exact row and column control matters.",
 		},
 		ExactFrame: ExactFrameInfo{
-			PlacementSyntax: `Use placements JSON for sparse exact control: [{"row":0,"col":0,"symbol":"A","color":"green"}]. Rows are 0-5 and columns are 0-21.`,
-			FrameSyntax:     "Use frame JSON for a full exact board: cells is 6 rows x 22 columns; colors is optional and must be the same shape when provided.",
+			PlacementSyntax: `Use placements JSON for sparse exact control: [{"row":0,"col":0,"symbol":"A","color":"green"}]. Rows are 0-9 and columns are 0-21.`,
+			FrameSyntax:     "Use frame JSON for a full exact board: cells is 10 rows x 22 columns; colors is optional and must be the same shape when provided.",
 			TimeSyntax:      `ana-boardctl supports optional client-side exact-time sending with --at "2026-05-31T18:30:00+02:00" or the scripts/ana-board-at helper.`,
 		},
 		BlockArt: BlockArtInfo{
@@ -80,7 +80,7 @@ func Current() Capabilities {
 			{Text: "[green]B[amber]U[blue]I[violet]L[green]D PASSED ✅", Source: "codex", Priority: messages.DefaultPriority, Kind: "success", Color: "white", Animation: "row"},
 			{Text: "[amber]EMAIL NEEDS REPLY ✉️", Source: "hermes", Priority: messages.DefaultPriority, Kind: "email", Color: "white", Animation: "row"},
 			{Text: "[blue]D[green]E[amber]P[red]L[violet]O[blue]Y COMPLETE 🚀", Source: "ci", Priority: messages.DefaultPriority, Kind: "deploy", Color: "white", Animation: "row"},
-			{Placements: []messages.PlacedTile{{Row: 0, Col: 0, Symbol: "A", Color: "green"}, {Row: 5, Col: 21, Symbol: "✅", Color: "blue"}}, Source: "codex", Priority: messages.DefaultPriority, Kind: "info", Color: "white", Animation: "row"},
+			{Placements: []messages.PlacedTile{{Row: 0, Col: 0, Symbol: "A", Color: "green"}, {Row: board.DefaultRows - 1, Col: board.DefaultCols - 1, Symbol: "✅", Color: "blue"}}, Source: "codex", Priority: messages.DefaultPriority, Kind: "info", Color: "white", Animation: "row"},
 		},
 	}
 }

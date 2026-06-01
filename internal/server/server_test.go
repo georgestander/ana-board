@@ -3,12 +3,19 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/georgestander/ana-board/internal/board"
 )
+
+func centeredStartRow(lineCount int) int {
+	return (board.DefaultRows - lineCount) / 2
+}
 
 func TestHealthz(t *testing.T) {
 	srv := newTestServer(t)
@@ -40,12 +47,12 @@ func TestCurrentFrameStartsBlank(t *testing.T) {
 		t.Fatalf("Decode returned error: %v", err)
 	}
 
-	if got.Frame.Rows != 6 {
-		t.Fatalf("Rows = %d, want 6", got.Frame.Rows)
+	if got.Frame.Rows != board.DefaultRows {
+		t.Fatalf("Rows = %d, want %d", got.Frame.Rows, board.DefaultRows)
 	}
 
-	if got.Frame.Cols != 22 {
-		t.Fatalf("Cols = %d, want 22", got.Frame.Cols)
+	if got.Frame.Cols != board.DefaultCols {
+		t.Fatalf("Cols = %d, want %d", got.Frame.Cols, board.DefaultCols)
 	}
 }
 
@@ -75,8 +82,8 @@ func TestCreateMessageUpdatesCurrentFrame(t *testing.T) {
 		t.Fatalf("Decode returned error: %v", err)
 	}
 
-	if got.Frame.Cells[2][8] != "H" {
-		t.Fatalf("centered cell = %q, want %q", got.Frame.Cells[2][8], "H")
+	if got.Frame.Cells[centeredStartRow(1)][8] != "H" {
+		t.Fatalf("centered cell = %q, want %q", got.Frame.Cells[centeredStartRow(1)][8], "H")
 	}
 }
 
@@ -142,20 +149,20 @@ func TestCreateMessageSupportsEmojiAndColor(t *testing.T) {
 		t.Fatalf("Decode returned error: %v", err)
 	}
 
-	if got.Frame.Cells[2][7] != "H" {
-		t.Fatalf("first cell = %q, want H", got.Frame.Cells[2][7])
+	if got.Frame.Cells[centeredStartRow(1)][7] != "H" {
+		t.Fatalf("first cell = %q, want H", got.Frame.Cells[centeredStartRow(1)][7])
 	}
 
-	if got.Frame.Colors[2][7] != "green" {
-		t.Fatalf("first color = %q, want green", got.Frame.Colors[2][7])
+	if got.Frame.Colors[centeredStartRow(1)][7] != "green" {
+		t.Fatalf("first color = %q, want green", got.Frame.Colors[centeredStartRow(1)][7])
 	}
 
-	if got.Frame.Cells[2][13] != "🌍" {
-		t.Fatalf("emoji cell = %q, want globe emoji", got.Frame.Cells[2][13])
+	if got.Frame.Cells[centeredStartRow(1)][13] != "🌍" {
+		t.Fatalf("emoji cell = %q, want globe emoji", got.Frame.Cells[centeredStartRow(1)][13])
 	}
 
-	if got.Frame.Colors[2][13] != "blue" {
-		t.Fatalf("emoji color = %q, want blue", got.Frame.Colors[2][13])
+	if got.Frame.Colors[centeredStartRow(1)][13] != "blue" {
+		t.Fatalf("emoji color = %q, want blue", got.Frame.Colors[centeredStartRow(1)][13])
 	}
 }
 
@@ -180,16 +187,16 @@ func TestCreateMessageSupportsColoredSegmentsAndNativeEmoji(t *testing.T) {
 		t.Fatalf("Decode returned error: %v", err)
 	}
 
-	if got.Frame.Cells[2][15] != "🎯" {
-		t.Fatalf("emoji cell = %q, want target emoji", got.Frame.Cells[2][15])
+	if got.Frame.Cells[centeredStartRow(1)][15] != "🎯" {
+		t.Fatalf("emoji cell = %q, want target emoji", got.Frame.Cells[centeredStartRow(1)][15])
 	}
 
-	if got.Frame.Colors[2][5] != "green" {
-		t.Fatalf("first color = %q, want green", got.Frame.Colors[2][5])
+	if got.Frame.Colors[centeredStartRow(1)][5] != "green" {
+		t.Fatalf("first color = %q, want green", got.Frame.Colors[centeredStartRow(1)][5])
 	}
 
-	if got.Frame.Colors[2][15] != "red" {
-		t.Fatalf("emoji color = %q, want red", got.Frame.Colors[2][15])
+	if got.Frame.Colors[centeredStartRow(1)][15] != "red" {
+		t.Fatalf("emoji color = %q, want red", got.Frame.Colors[centeredStartRow(1)][15])
 	}
 }
 
@@ -214,20 +221,20 @@ func TestCreateMessageSupportsTileLevelColors(t *testing.T) {
 		t.Fatalf("Decode returned error: %v", err)
 	}
 
-	if got.Frame.Cells[2][8] != "A" || got.Frame.Colors[2][8] != "green" {
-		t.Fatalf("first tile = %q/%q, want A/green", got.Frame.Cells[2][8], got.Frame.Colors[2][8])
+	if got.Frame.Cells[centeredStartRow(1)][8] != "A" || got.Frame.Colors[centeredStartRow(1)][8] != "green" {
+		t.Fatalf("first tile = %q/%q, want A/green", got.Frame.Cells[centeredStartRow(1)][8], got.Frame.Colors[centeredStartRow(1)][8])
 	}
 
-	if got.Frame.Cells[2][9] != "N" || got.Frame.Colors[2][9] != "amber" {
-		t.Fatalf("second tile = %q/%q, want N/amber", got.Frame.Cells[2][9], got.Frame.Colors[2][9])
+	if got.Frame.Cells[centeredStartRow(1)][9] != "N" || got.Frame.Colors[centeredStartRow(1)][9] != "amber" {
+		t.Fatalf("second tile = %q/%q, want N/amber", got.Frame.Cells[centeredStartRow(1)][9], got.Frame.Colors[centeredStartRow(1)][9])
 	}
 
-	if got.Frame.Cells[2][10] != "A" || got.Frame.Colors[2][10] != "red" {
-		t.Fatalf("third tile = %q/%q, want A/red", got.Frame.Cells[2][10], got.Frame.Colors[2][10])
+	if got.Frame.Cells[centeredStartRow(1)][10] != "A" || got.Frame.Colors[centeredStartRow(1)][10] != "red" {
+		t.Fatalf("third tile = %q/%q, want A/red", got.Frame.Cells[centeredStartRow(1)][10], got.Frame.Colors[centeredStartRow(1)][10])
 	}
 
-	if got.Frame.Cells[2][12] != "🫶" || got.Frame.Colors[2][12] != "violet" {
-		t.Fatalf("emoji tile = %q/%q, want emoji/violet", got.Frame.Cells[2][12], got.Frame.Colors[2][12])
+	if got.Frame.Cells[centeredStartRow(1)][12] != "🫶" || got.Frame.Colors[centeredStartRow(1)][12] != "violet" {
+		t.Fatalf("emoji tile = %q/%q, want emoji/violet", got.Frame.Cells[centeredStartRow(1)][12], got.Frame.Colors[centeredStartRow(1)][12])
 	}
 
 	if len(got.Message.Tiles) != 5 {
@@ -248,22 +255,23 @@ func TestCreateMessageSupportsTileLevelColors(t *testing.T) {
 		t.Fatalf("Decode current returned error: %v", err)
 	}
 
-	if current.Frame.Cells[2][9] != "N" || current.Frame.Colors[2][9] != "amber" {
-		t.Fatalf("current second tile = %q/%q, want N/amber", current.Frame.Cells[2][9], current.Frame.Colors[2][9])
+	if current.Frame.Cells[centeredStartRow(1)][9] != "N" || current.Frame.Colors[centeredStartRow(1)][9] != "amber" {
+		t.Fatalf("current second tile = %q/%q, want N/amber", current.Frame.Cells[centeredStartRow(1)][9], current.Frame.Colors[centeredStartRow(1)][9])
 	}
 
-	if current.Frame.Cells[2][12] != "🫶" || current.Frame.Colors[2][12] != "violet" {
-		t.Fatalf("current emoji tile = %q/%q, want emoji/violet", current.Frame.Cells[2][12], current.Frame.Colors[2][12])
+	if current.Frame.Cells[centeredStartRow(1)][12] != "🫶" || current.Frame.Colors[centeredStartRow(1)][12] != "violet" {
+		t.Fatalf("current emoji tile = %q/%q, want emoji/violet", current.Frame.Cells[centeredStartRow(1)][12], current.Frame.Colors[centeredStartRow(1)][12])
 	}
 }
 
 func TestCreateMessageSupportsExactPlacements(t *testing.T) {
 	srv := newTestServer(t)
+	bottomRow := board.DefaultRows - 1
 
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/messages",
-		bytes.NewBufferString(`{"placements":[{"row":0,"col":0,"symbol":"A","color":"green"},{"row":5,"col":21,"symbol":"✅","color":"blue"}],"source":"test","kind":"info"}`),
+		bytes.NewBufferString(fmt.Sprintf(`{"placements":[{"row":0,"col":0,"symbol":"A","color":"green"},{"row":%d,"col":21,"symbol":"✅","color":"blue"}],"source":"test","kind":"info"}`, bottomRow)),
 	)
 	rec := httptest.NewRecorder()
 
@@ -281,8 +289,8 @@ func TestCreateMessageSupportsExactPlacements(t *testing.T) {
 	if got.Frame.Cells[0][0] != "A" || got.Frame.Colors[0][0] != "green" {
 		t.Fatalf("top-left tile = %q/%q, want A/green", got.Frame.Cells[0][0], got.Frame.Colors[0][0])
 	}
-	if got.Frame.Cells[5][21] != "✅" || got.Frame.Colors[5][21] != "blue" {
-		t.Fatalf("bottom-right tile = %q/%q, want check/blue", got.Frame.Cells[5][21], got.Frame.Colors[5][21])
+	if got.Frame.Cells[bottomRow][21] != "✅" || got.Frame.Colors[bottomRow][21] != "blue" {
+		t.Fatalf("bottom-right tile = %q/%q, want check/blue", got.Frame.Cells[bottomRow][21], got.Frame.Colors[bottomRow][21])
 	}
 	if len(got.Message.Placements) != 2 {
 		t.Fatalf("stored placements = %d, want 2", len(got.Message.Placements))
@@ -292,11 +300,11 @@ func TestCreateMessageSupportsExactPlacements(t *testing.T) {
 func TestCreateMessageSupportsFullFrame(t *testing.T) {
 	srv := newTestServer(t)
 
-	cells := make([][]string, 6)
-	colors := make([][]string, 6)
+	cells := make([][]string, board.DefaultRows)
+	colors := make([][]string, board.DefaultRows)
 	for row := range cells {
-		cells[row] = make([]string, 22)
-		colors[row] = make([]string, 22)
+		cells[row] = make([]string, board.DefaultCols)
+		colors[row] = make([]string, board.DefaultCols)
 		for col := range cells[row] {
 			cells[row][col] = " "
 			colors[row][col] = "white"
@@ -343,6 +351,39 @@ func TestCreateMessageSupportsFullFrame(t *testing.T) {
 	}
 }
 
+func TestCreateMessageRejectsLegacySixRowFrame(t *testing.T) {
+	srv := newTestServer(t)
+
+	cells := make([][]string, 6)
+	for row := range cells {
+		cells[row] = make([]string, board.DefaultCols)
+		for col := range cells[row] {
+			cells[row][col] = " "
+		}
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"frame": map[string]any{
+			"cells": cells,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/messages", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(rec.Body.String(), "frame cells must have 10 rows") {
+		t.Fatalf("body = %q, want 10-row validation error", rec.Body.String())
+	}
+}
+
 func TestCreateMessageRejectsDuplicateExactPlacement(t *testing.T) {
 	srv := newTestServer(t)
 
@@ -366,7 +407,7 @@ func TestCreateMessageRejectsOutOfBoundsPlacement(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/api/messages",
-		bytes.NewBufferString(`{"placements":[{"row":6,"col":0,"symbol":"A"}]}`),
+		bytes.NewBufferString(fmt.Sprintf(`{"placements":[{"row":%d,"col":0,"symbol":"A"}]}`, board.DefaultRows)),
 	)
 	rec := httptest.NewRecorder()
 
@@ -587,8 +628,8 @@ func TestAdminCreateMessageUpdatesCurrentFrame(t *testing.T) {
 		t.Fatalf("Decode returned error: %v", err)
 	}
 
-	if got.Frame.Cells[2][4] != "B" {
-		t.Fatalf("centered cell = %q, want %q", got.Frame.Cells[2][4], "B")
+	if got.Frame.Cells[centeredStartRow(1)][4] != "B" {
+		t.Fatalf("centered cell = %q, want %q", got.Frame.Cells[centeredStartRow(1)][4], "B")
 	}
 }
 

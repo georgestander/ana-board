@@ -3,7 +3,7 @@ package board
 import "fmt"
 
 const (
-	DefaultRows  = 6
+	DefaultRows  = 10
 	DefaultCols  = 22
 	DefaultColor = "white"
 )

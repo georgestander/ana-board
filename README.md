@@ -227,7 +227,7 @@ Do not expose this unauthenticated API on the public internet yet. Keep it priva
 
 ## Message Limits
 
-- Board size: 6 rows x 22 columns.
+- Board size: 10 rows x 22 columns.
 - Text is normalized to uppercase.
 - Spaces collapse.
 - Allowed plain characters: `A-Z`, `0-9`, space, `.`, `,`, `!`, `?`, `:`, `-`, `/`, `'`, `"`, and `█`.
@@ -236,13 +236,13 @@ Do not expose this unauthenticated API on the public internet yet. Keep it priva
 - Emoji grapheme clusters such as `✅`, `👍🏽`, `🇿🇦`, and `👨‍👩‍👧‍👦` count as one board tile.
 - Common named aliases like `:rocket:`, `:check:`, `:warning:`, `:mail:`, `:calendar:`, and `:globe:` also work.
 - Unknown named aliases are treated as plain text, so agents are safest when they send native emoji directly.
-- Messages that need more than 6 rows fail.
+- Messages that need more than 10 rows fail.
 - Words longer than 22 tiles fail.
 - Exact per-tile color can be sent with JSON `tiles`: `[{"symbol":"A","color":"green"},{"symbol":"N","color":"amber"},{"symbol":"A","color":"red"}]`.
 - Quick text can color individual letters with inline tokens: `[green]A[amber]N[red]A [blue]READY`.
 - Agents can also send JSON `segments` when phrases share a color: `[{"text":"OK ","color":"green"},{"text":"FAIL","color":"red"}]`.
 - Exact sparse placement can be sent with JSON `placements`: `[{"row":0,"col":0,"symbol":"A","color":"green"}]`.
-- Full exact frames can be sent with JSON `frame`: `cells` must be 6 rows x 22 columns; `colors` is optional and must match the same shape.
+- Full exact frames can be sent with JSON `frame`: `cells` must be 10 rows x 22 columns; `colors` is optional and must match the same shape.
 - Block art uses the `█` symbol as a colored pixel. Named sprites are available through `ana-boardctl --sprite` and MCP sprite tools; local image conversion is available through `ana-boardctl --image`.
 - The `color` metadata field is only the default for tiles without an inline token or segment color.
 - Optional exact-time sending is client-side: `ana-boardctl send --at ...` waits until that time, then sends.

@@ -24,7 +24,7 @@ func TestCurrentDescribesNativeEmojiAndPerTileColor(t *testing.T) {
 		t.Fatalf("ColorSyntax = %q, want default-color guidance", caps.Text.ColorSyntax)
 	}
 
-	if !strings.Contains(caps.ExactFrame.PlacementSyntax, "Rows are 0-5") {
+	if !strings.Contains(caps.ExactFrame.PlacementSyntax, "Rows are 0-9") {
 		t.Fatalf("PlacementSyntax = %q, want row/column guidance", caps.ExactFrame.PlacementSyntax)
 	}
 

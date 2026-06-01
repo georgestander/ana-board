@@ -329,7 +329,7 @@ func parseMessageCommand(name string, args []string) (parsedMessageCommand, erro
 	segmentsJSON := fs.String("segments-json", "", "JSON array of colored text segments")
 	tilesJSON := fs.String("tiles-json", "", "JSON array of exact per-tile symbols and colors")
 	placementsJSON := fs.String("placements-json", "", "JSON array of row/col tile placements")
-	frameJSON := fs.String("frame-json", "", "JSON object with 6x22 cells and optional colors")
+	frameJSON := fs.String("frame-json", "", "JSON object with 10x22 cells and optional colors")
 	sprite := fs.String("sprite", "", "named block-art sprite")
 	imagePath := fs.String("image", "", "image file to convert to block art")
 	at := fs.String("at", "", "optional exact send time, RFC3339 or local 'YYYY-MM-DD HH:MM[:SS]'")
@@ -544,7 +544,7 @@ Commands:
   send --sprite trophy --source codex
   frame --image ./tiny.png --source codex
   frame --placements-json '[{"row":0,"col":0,"symbol":"A","color":"green"}]'
-  frame --frame-json '{"cells":[["A",... 22 columns],... 6 rows]}'
+  frame --frame-json '{"cells":[["A",... 22 columns],... 10 rows]}'
   send --at "2026-05-31T18:30:00+02:00" "[amber]REMINDER ⏰"
   current [--url URL] [--json]
   recent [--url URL] [--limit N] [--json]

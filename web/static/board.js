@@ -1,4 +1,4 @@
-const ROWS = 6;
+const ROWS = 10;
 const COLS = 22;
 const MAX_ANIMATION_DURATION_MS = 3000;
 const TILE_FLIP_DURATION_MS = 180;
