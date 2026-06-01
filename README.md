@@ -89,6 +89,12 @@ Bind an additional local or private address when the same board should be reacha
 ANA_BOARD_ADDR=<board-private-ip>:18080 ANA_BOARD_EXTRA_ADDRS=127.0.0.1:18080 ana-board
 ```
 
+Browser-based writes from the admin page are accepted only from trusted browser origins derived from `ANA_BOARD_ADDR` and `ANA_BOARD_EXTRA_ADDRS`. CLI, MCP, and script writes without a browser `Origin` header still work. If you open the board through a DNS name or reverse proxy, configure that exact origin:
+
+```sh
+ANA_BOARD_TRUSTED_ORIGINS=http://ana-board-host:18080 ana-board
+```
+
 From a local clone:
 
 ```sh
@@ -118,6 +124,8 @@ On the sender machine, point the CLI or MCP server at that board URL:
 export ANA_BOARD_URL=http://<board-private-ip>:18080
 ana-boardctl send --source agent --kind task "[green]AGENT CONNECTED ✅"
 ```
+
+If browser admin writes use a private DNS name instead of the bind IP, add it to `ANA_BOARD_TRUSTED_ORIGINS` on the board machine.
 
 If the sender can ping the board machine but cannot send messages, check that Ana Board is listening on the private IP rather than only `127.0.0.1`:
 

@@ -89,3 +89,28 @@ func TestMemoryStoreListMessagesHonorsLimit(t *testing.T) {
 		t.Fatalf("len(got) = %d, want 2", len(got))
 	}
 }
+
+func TestMemoryStoreCapsRetainedMessages(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+
+	for index := 0; index < DefaultMessageLimit+1; index++ {
+		id := time.Unix(int64(index), 0).Format(time.RFC3339)
+		if err := store.SaveMessage(ctx, messages.Message{ID: id, Text: id}); err != nil {
+			t.Fatalf("SaveMessage returned error: %v", err)
+		}
+	}
+
+	got, err := store.ListMessages(ctx, DefaultMessageLimit+10)
+	if err != nil {
+		t.Fatalf("ListMessages returned error: %v", err)
+	}
+
+	if len(got) != DefaultMessageLimit {
+		t.Fatalf("len(got) = %d, want %d", len(got), DefaultMessageLimit)
+	}
+
+	if got[len(got)-1].ID == time.Unix(0, 0).Format(time.RFC3339) {
+		t.Fatal("oldest message was retained past the cap")
+	}
+}

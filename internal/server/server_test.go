@@ -80,6 +80,47 @@ func TestCreateMessageUpdatesCurrentFrame(t *testing.T) {
 	}
 }
 
+func TestCreateMessageRejectsHostReflectedOrigin(t *testing.T) {
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/messages",
+		bytes.NewBufferString(`{"text":"hello"}`),
+	)
+	req.Host = "attacker.test"
+	req.Header.Set("Origin", "http://attacker.test")
+	rec := httptest.NewRecorder()
+
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+}
+
+func TestCreateMessageAllowsConfiguredTrustedOrigin(t *testing.T) {
+	srv, err := NewServer(WithTrustedOrigins([]string{"http://trusted.test"}))
+	if err != nil {
+		t.Fatalf("NewServer returned error: %v", err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/messages",
+		bytes.NewBufferString(`{"text":"hello"}`),
+	)
+	req.Host = "attacker.test"
+	req.Header.Set("Origin", "http://trusted.test")
+	rec := httptest.NewRecorder()
+
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+}
+
 func TestCreateMessageSupportsEmojiAndColor(t *testing.T) {
 	srv := newTestServer(t)
 
@@ -506,6 +547,13 @@ func TestAdminPageLoads(t *testing.T) {
 
 	if !strings.Contains(rec.Body.String(), "Send Message") {
 		t.Fatalf("admin page did not contain send form")
+	}
+
+	if got := rec.Header().Get("Content-Security-Policy"); got != "frame-ancestors 'self'" {
+		t.Fatalf("Content-Security-Policy = %q, want frame-ancestors 'self'", got)
+	}
+	if got := rec.Header().Get("X-Frame-Options"); got != "SAMEORIGIN" {
+		t.Fatalf("X-Frame-Options = %q, want SAMEORIGIN", got)
 	}
 }
 

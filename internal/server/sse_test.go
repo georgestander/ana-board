@@ -4,7 +4,10 @@ import "testing"
 
 func TestBrokerKeepsLatestEventWhenSubscriberIsFull(t *testing.T) {
 	broker := NewBroker()
-	ch := broker.Subscribe()
+	ch, err := broker.Subscribe()
+	if err != nil {
+		t.Fatalf("Subscribe returned error: %v", err)
+	}
 	defer broker.Unsubscribe(ch)
 
 	for index := 0; index < cap(ch)+3; index++ {
@@ -22,5 +25,20 @@ func TestBrokerKeepsLatestEventWhenSubscriberIsFull(t *testing.T) {
 
 	if !gotLatest {
 		t.Fatal("subscriber did not receive latest event")
+	}
+}
+
+func TestBrokerRejectsSubscriberPastLimit(t *testing.T) {
+	broker := NewBrokerWithLimit(1)
+
+	ch, err := broker.Subscribe()
+	if err != nil {
+		t.Fatalf("first Subscribe returned error: %v", err)
+	}
+	defer broker.Unsubscribe(ch)
+
+	_, err = broker.Subscribe()
+	if err != ErrSubscriberLimitReached {
+		t.Fatalf("second Subscribe error = %v, want %v", err, ErrSubscriberLimitReached)
 	}
 }

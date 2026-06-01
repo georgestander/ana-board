@@ -73,6 +73,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	writeFrameProtectionHeaders(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(html)
@@ -100,7 +101,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminCreateMessage(w http.ResponseWriter, r *http.Request) {
-	if !allowSameOriginWrite(w, r) {
+	if !s.allowSameOriginWrite(w, r) {
 		return
 	}
 
@@ -135,7 +136,7 @@ func (s *Server) handleAdminCreateMessage(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleAdminClear(w http.ResponseWriter, r *http.Request) {
-	if !allowSameOriginWrite(w, r) {
+	if !s.allowSameOriginWrite(w, r) {
 		return
 	}
 
@@ -148,7 +149,7 @@ func (s *Server) handleAdminClear(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAPIClear(w http.ResponseWriter, r *http.Request) {
-	if !allowSameOriginWrite(w, r) {
+	if !s.allowSameOriginWrite(w, r) {
 		return
 	}
 
@@ -178,7 +179,7 @@ func (s *Server) handleCurrentFrame(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
-	if !allowSameOriginWrite(w, r) {
+	if !s.allowSameOriginWrite(w, r) {
 		return
 	}
 
@@ -457,18 +458,22 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeJSONError(w, http.StatusInternalServerError, fmt.Errorf("streaming is not supported"))
 		return
 	}
 
-	ch := s.broker.Subscribe()
+	ch, err := s.broker.Subscribe()
+	if err != nil {
+		writeJSONError(w, http.StatusServiceUnavailable, err)
+		return
+	}
 	defer s.broker.Unsubscribe(ch)
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
 
 	frame, err := s.store.CurrentFrame(r.Context(), defaultBoardID)
 	if err == nil {
@@ -532,6 +537,7 @@ func (s *Server) renderAdmin(w http.ResponseWriter, status int, data adminPageDa
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writeFrameProtectionHeaders(w)
 	w.WriteHeader(status)
 	_ = tmpl.Execute(w, data)
 }
@@ -589,18 +595,27 @@ func frameToResponse(frame board.Frame) frameResponse {
 	}
 }
 
-func allowSameOriginWrite(w http.ResponseWriter, r *http.Request) bool {
+func (s *Server) allowSameOriginWrite(w http.ResponseWriter, r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
 		return true
 	}
 
-	if origin == "http://"+r.Host || origin == "https://"+r.Host {
-		return true
+	normalized, err := normalizeTrustedOrigin(origin)
+	if err == nil {
+		_, ok := s.trustedOrigins[normalized]
+		if ok {
+			return true
+		}
 	}
 
 	writeJSONError(w, http.StatusForbidden, fmt.Errorf("origin %q is not allowed", origin))
 	return false
+}
+
+func writeFrameProtectionHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
+	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

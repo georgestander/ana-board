@@ -16,24 +16,24 @@ func main() {
 		addr = "127.0.0.1:8080"
 	}
 
-	app, err := server.NewServer()
+	additionalAddrs := extraAddrs(os.Getenv("ANA_BOARD_EXTRA_ADDRS"))
+	trustedOrigins := server.TrustedOriginsForAddrs(append([]string{addr}, additionalAddrs...)...)
+	configuredOrigins, err := server.ParseTrustedOrigins(os.Getenv("ANA_BOARD_TRUSTED_ORIGINS"))
+	if err != nil {
+		log.Fatalf("trusted origins: %v", err)
+	}
+	trustedOrigins = append(trustedOrigins, configuredOrigins...)
+
+	app, err := server.NewServer(server.WithTrustedOrigins(trustedOrigins))
 	if err != nil {
 		log.Fatalf("create server: %v", err)
 	}
 
-	httpServer := &http.Server{
-		Addr:              addr,
-		Handler:           app.Routes(),
-		ReadHeaderTimeout: 5 * time.Second,
-	}
+	httpServer := newHTTPServer(addr, app.Routes())
 
-	for _, extraAddr := range extraAddrs(os.Getenv("ANA_BOARD_EXTRA_ADDRS")) {
+	for _, extraAddr := range additionalAddrs {
 		go func(extraAddr string) {
-			extraServer := &http.Server{
-				Addr:              extraAddr,
-				Handler:           app.Routes(),
-				ReadHeaderTimeout: 5 * time.Second,
-			}
+			extraServer := newHTTPServer(extraAddr, app.Routes())
 
 			log.Printf("ana-board listening on http://%s", extraAddr)
 			if err := extraServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -45,6 +45,17 @@ func main() {
 	log.Printf("ana-board listening on http://%s", addr)
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("serve: %v", err)
+	}
+}
+
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 }
 

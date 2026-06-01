@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/georgestander/ana-board/internal/board"
@@ -10,17 +11,50 @@ import (
 )
 
 const defaultBoardID = "default"
+const DefaultMaxSubscribers = 64
 
 type Server struct {
-	store  store.Store
-	broker *Broker
+	store          store.Store
+	broker         *Broker
+	trustedOrigins map[string]struct{}
 }
 
-func NewServer() (*Server, error) {
-	return NewServerWithStore(store.NewMemoryStore())
+type Option func(*Server) error
+
+func WithTrustedOrigins(origins []string) Option {
+	return func(s *Server) error {
+		for _, raw := range origins {
+			origin, err := normalizeTrustedOrigin(raw)
+			if err != nil {
+				return err
+			}
+			if origin == "" {
+				continue
+			}
+
+			s.trustedOrigins[origin] = struct{}{}
+		}
+
+		return nil
+	}
 }
 
-func NewServerWithStore(st store.Store) (*Server, error) {
+func WithMaxSubscribers(maxSubscribers int) Option {
+	return func(s *Server) error {
+		if maxSubscribers <= 0 {
+			return fmt.Errorf("max subscribers must be positive")
+		}
+
+		s.broker = NewBrokerWithLimit(maxSubscribers)
+		return nil
+	}
+}
+
+func NewServer(opts ...Option) (*Server, error) {
+	return NewServerWithStore(store.NewMemoryStore(), opts...)
+}
+
+func NewServerWithStore(st store.Store, opts ...Option) (*Server, error) {
 	frame, err := board.NewFrame(board.DefaultRows, board.DefaultCols)
 	if err != nil {
 		return nil, err
@@ -30,10 +64,19 @@ func NewServerWithStore(st store.Store) (*Server, error) {
 		return nil, err
 	}
 
-	return &Server{
-		store:  st,
-		broker: NewBroker(),
-	}, nil
+	srv := &Server{
+		store:          st,
+		broker:         NewBroker(),
+		trustedOrigins: make(map[string]struct{}),
+	}
+
+	for _, opt := range opts {
+		if err := opt(srv); err != nil {
+			return nil, err
+		}
+	}
+
+	return srv, nil
 }
 
 func (s *Server) Routes() http.Handler {

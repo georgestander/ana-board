@@ -9,6 +9,8 @@ import (
 	"github.com/georgestander/ana-board/internal/messages"
 )
 
+const DefaultMessageLimit = 200
+
 type MemoryStore struct {
 	mu       sync.RWMutex
 	frames   map[string]board.Frame
@@ -30,6 +32,11 @@ func (s *MemoryStore) SaveMessage(ctx context.Context, msg messages.Message) err
 	defer s.mu.Unlock()
 
 	s.messages = append([]messages.Message{msg}, s.messages...)
+	if len(s.messages) > DefaultMessageLimit {
+		s.messages[DefaultMessageLimit] = messages.Message{}
+		s.messages = s.messages[:DefaultMessageLimit:DefaultMessageLimit]
+	}
+
 	return nil
 }
 

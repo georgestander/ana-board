@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -13,24 +14,36 @@ type FrameEvent struct {
 }
 
 type Broker struct {
-	mu          sync.RWMutex
-	subscribers map[chan FrameEvent]struct{}
+	mu             sync.RWMutex
+	subscribers    map[chan FrameEvent]struct{}
+	maxSubscribers int
 }
 
+var ErrSubscriberLimitReached = errors.New("maximum event subscribers reached")
+
 func NewBroker() *Broker {
+	return NewBrokerWithLimit(DefaultMaxSubscribers)
+}
+
+func NewBrokerWithLimit(maxSubscribers int) *Broker {
 	return &Broker{
-		subscribers: make(map[chan FrameEvent]struct{}),
+		subscribers:    make(map[chan FrameEvent]struct{}),
+		maxSubscribers: maxSubscribers,
 	}
 }
 
-func (b *Broker) Subscribe() chan FrameEvent {
+func (b *Broker) Subscribe() (chan FrameEvent, error) {
 	ch := make(chan FrameEvent, 8)
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	if b.maxSubscribers > 0 && len(b.subscribers) >= b.maxSubscribers {
+		return nil, ErrSubscriberLimitReached
+	}
+
 	b.subscribers[ch] = struct{}{}
-	return ch
+	return ch, nil
 }
 
 func (b *Broker) Unsubscribe(ch chan FrameEvent) {

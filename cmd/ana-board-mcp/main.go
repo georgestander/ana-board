@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -17,8 +19,12 @@ import (
 )
 
 const protocolVersion = "2025-11-25"
+const serverVersion = "0.2.1"
+const maxRequestLineBytes = 1024 * 1024
+const maxRecentMessages = 50
 
 var supportedProtocolVersions = []string{"2025-11-25", "2025-06-18"}
+var errRequestLineTooLarge = errors.New("request line exceeds maximum size")
 
 type rpcRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
@@ -88,13 +94,26 @@ func main() {
 	}
 }
 
-func serve(input *os.File, output *os.File, boardClient *client.Client) error {
-	scanner := bufio.NewScanner(input)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+func serve(input io.Reader, output io.Writer, boardClient *client.Client) error {
+	reader := bufio.NewReaderSize(input, 64*1024)
 	encoder := json.NewEncoder(output)
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	for {
+		line, err := readRequestLine(reader, maxRequestLineBytes)
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if errors.Is(err, errRequestLineTooLarge) {
+			if encodeErr := encoder.Encode(errorResponse(nil, -32600, "request line exceeds maximum size")); encodeErr != nil {
+				return encodeErr
+			}
+			continue
+		}
+		if err != nil {
+			return err
+		}
+
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
@@ -108,8 +127,46 @@ func serve(input *os.File, output *os.File, boardClient *client.Client) error {
 			return err
 		}
 	}
+}
 
-	return scanner.Err()
+func readRequestLine(reader *bufio.Reader, maxBytes int) (string, error) {
+	var builder strings.Builder
+
+	for {
+		chunk, err := reader.ReadString('\n')
+		if len(chunk) > 0 {
+			if builder.Len()+len(chunk) > maxBytes {
+				if !strings.Contains(chunk, "\n") {
+					drainRequestLine(reader)
+				}
+				return "", errRequestLineTooLarge
+			}
+			builder.WriteString(chunk)
+		}
+
+		switch {
+		case err == nil:
+			return builder.String(), nil
+		case errors.Is(err, io.EOF):
+			if builder.Len() == 0 {
+				return "", io.EOF
+			}
+			return builder.String(), nil
+		case errors.Is(err, bufio.ErrBufferFull):
+			continue
+		default:
+			return "", err
+		}
+	}
+}
+
+func drainRequestLine(reader *bufio.Reader) {
+	for {
+		chunk, err := reader.ReadString('\n')
+		if strings.Contains(chunk, "\n") || err == nil || errors.Is(err, io.EOF) || !errors.Is(err, bufio.ErrBufferFull) {
+			return
+		}
+	}
 }
 
 func handleLine(line string, boardClient *client.Client) *rpcResponse {
@@ -134,7 +191,7 @@ func handleLine(line string, boardClient *client.Client) *rpcResponse {
 			},
 			"serverInfo": map[string]string{
 				"name":    "ana-board",
-				"version": "0.2.0",
+				"version": serverVersion,
 			},
 			"instructions": "Use ana_board_capabilities first. Send concise board-safe status updates. Native iOS/macOS emoji can be sent directly; there is no emoji whitelist. Use tiles JSON for exact per-letter color, or placements/frame JSON for exact row and column control. Only row animation is supported.",
 		})
@@ -236,6 +293,9 @@ func recentTool(raw json.RawMessage, boardClient *client.Client) toolResult {
 	if args.Limit != nil {
 		if *args.Limit <= 0 {
 			return textToolError("limit must be a positive integer")
+		}
+		if *args.Limit > maxRecentMessages {
+			return textToolError(fmt.Sprintf("limit must be less than or equal to %d", maxRecentMessages))
 		}
 		limit = *args.Limit
 	}
@@ -402,7 +462,7 @@ func tools() []map[string]any {
 			"inputSchema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 50},
+					"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": maxRecentMessages},
 				},
 			},
 			"annotations": map[string]any{"readOnlyHint": true, "openWorldHint": false},
