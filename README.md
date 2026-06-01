@@ -35,15 +35,17 @@ Pieces:
 - `ana-board`: local web server, display, admin panel, HTTP API, SSE stream
 - `ana-boardctl`: CLI sender for scripts, cron, CI, and remote shells
 - `ana-board-mcp`: stdio MCP server for Codex, Claude Code, OpenCode, Hermes-style agents
+- `ana-board-codex-bridge`: Codex notify/hook bridge for durable non-spammy board signals
 
 ## Install
 
-Install Go 1.22 or newer, then install the three binaries:
+Install Go 1.22 or newer, then install the binaries:
 
 ```sh
 go install github.com/georgestander/ana-board/cmd/ana-board@latest
 go install github.com/georgestander/ana-board/cmd/ana-boardctl@latest
 go install github.com/georgestander/ana-board/cmd/ana-board-mcp@latest
+go install github.com/georgestander/ana-board/cmd/ana-board-codex-bridge@latest
 ```
 
 Make sure Go's bin directory is on `PATH`:
@@ -54,15 +56,16 @@ export PATH="$PATH:$(go env GOPATH)/bin"
 
 ## Upgrade
 
-Upgrade all three binaries together:
+Upgrade the binaries together:
 
 ```sh
 go install github.com/georgestander/ana-board/cmd/ana-board@latest
 go install github.com/georgestander/ana-board/cmd/ana-boardctl@latest
 go install github.com/georgestander/ana-board/cmd/ana-board-mcp@latest
+go install github.com/georgestander/ana-board/cmd/ana-board-codex-bridge@latest
 ```
 
-Then restart the running `ana-board` server process. Updating `ana-boardctl` or `ana-board-mcp` does not update an already-running board server.
+Then restart any already-running process that uses the upgraded binary. Updating `ana-board` does not update an already-running board server, and updating `ana-board-codex-bridge` does not update an already-running bridge daemon until it restarts.
 
 ## Run
 
@@ -222,6 +225,42 @@ Remote agents can run the MCP process locally and point it at a private board UR
 ```sh
 ANA_BOARD_URL=http://ana-board-host:18080 ana-board-mcp
 ```
+
+## Codex Bridge
+
+`ana-board-codex-bridge` is the durable Codex path for lifecycle updates. MCP is still useful for rich manual board moments, but the bridge is meant for persistent notify/hook behavior across fresh Codex threads.
+
+Recommended shape:
+
+```text
+Codex notify/hooks
+  -> ana-board-codex-bridge enqueue
+  -> local queue of safe classified signals
+  -> ana-board-codex-bridge daemon
+  -> Ana Board HTTP API
+```
+
+`enqueue` reads a Codex payload, stores only safe signal flags, and exits without calling the board:
+
+```sh
+ana-board-codex-bridge enqueue --queue-dir /private/tmp/ana-board-codex-bridge/queue turn-ended '{"last_message":"tests passed"}'
+```
+
+Run the daemon under a local supervisor such as LaunchAgent:
+
+```sh
+ANA_BOARD_URL=http://localhost:8080 ana-board-codex-bridge daemon --queue-dir /private/tmp/ana-board-codex-bridge/queue --state /private/tmp/ana-board-codex-bridge/state.json
+```
+
+Useful environment variables:
+
+- `ANA_BOARD_URL`
+- `ANA_BOARD_CODEX_QUEUE_DIR`
+- `ANA_BOARD_CODEX_STATE`
+- `ANA_BOARD_CODEX_GLOBAL_COOLDOWN_SECONDS`
+- `ANA_BOARD_CODEX_KIND_COOLDOWN_SECONDS`
+- `ANA_BOARD_CODEX_DUPLICATE_COOLDOWN_SECONDS`
+- `ANA_BOARD_CODEX_SEND_TIMEOUT_MS`
 
 Do not expose this unauthenticated API on the public internet yet. Keep it private on localhost or a tightly scoped private network.
 
