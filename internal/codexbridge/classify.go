@@ -61,9 +61,13 @@ func classify(eventName string, fields []textField) Signal {
 	if strings.Contains(lowerEvent, "permission") {
 		signal.Approval = true
 	}
+	if isQuestionToolEvent(lowerEvent) {
+		signal.Question = true
+	}
 
 	for _, field := range fields {
 		lowerText := strings.ToLower(field.Text)
+		lowerKey := strings.ToLower(field.Key)
 		if signal.Swear == "" && isPromptLikeEvent(lowerEvent, field.Key) {
 			signal.Swear = detectedSwear(lowerText)
 		}
@@ -79,9 +83,41 @@ func classify(eventName string, fields []textField) Signal {
 		if !signal.Approval && containsAny(lowerText, approvalNeedles) {
 			signal.Approval = true
 		}
+		if !signal.Question && containsQuestionSignal(lowerEvent, lowerKey, lowerText) {
+			signal.Question = true
+		}
 	}
 
 	return signal
+}
+
+func isQuestionToolEvent(text string) bool {
+	return containsAny(text, questionToolNeedles)
+}
+
+func containsQuestionSignal(eventName, key, text string) bool {
+	if containsAny(key, questionToolNeedles) || containsAny(text, questionToolNeedles) {
+		return true
+	}
+	if containsAny(text, questionNeedles) {
+		return true
+	}
+	return isAssistantQuestion(eventName, key, text)
+}
+
+func isAssistantQuestion(eventName, key, text string) bool {
+	if !strings.HasSuffix(strings.TrimSpace(text), "?") {
+		return false
+	}
+	if strings.Contains(eventName, "user") || strings.Contains(key, "prompt") || strings.Contains(key, "user") {
+		return false
+	}
+	for _, part := range []string{"assistant", "last_message", "response", "reply"} {
+		if strings.Contains(key, part) {
+			return true
+		}
+	}
+	return false
 }
 
 func isPromptLikeEvent(eventName, key string) bool {
@@ -211,4 +247,23 @@ var approvalNeedles = []string{
 	"permission needed",
 	"needs approval",
 	"confirm",
+}
+
+var questionToolNeedles = []string{
+	"request_user_input",
+	"ask_user",
+	"askuserquestion",
+}
+
+var questionNeedles = []string{
+	"answer needed",
+	"awaiting your answer",
+	"waiting for your answer",
+	"question for you",
+	"please choose",
+	"choose one",
+	"which option",
+	"which route",
+	"do you want me to",
+	"do you want to",
 }

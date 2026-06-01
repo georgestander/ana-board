@@ -98,6 +98,70 @@ func TestBuildQueuedEventDropsBlandTurnEnded(t *testing.T) {
 	}
 }
 
+func TestBuildQueuedEventDetectsRequestUserInputQuestion(t *testing.T) {
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	event, ok, err := BuildQueuedEvent("PostToolUse", []byte(`{"tool_name":"request_user_input","cwd":"/Users/georgestander/Documents/ana-board","thread_id":"planning-thread-secret"}`), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected question event")
+	}
+	if !event.Signal.Question {
+		t.Fatalf("signal = %+v, want question", event.Signal)
+	}
+	if event.Context.Project != "ANA" {
+		t.Fatalf("project = %q, want ANA", event.Context.Project)
+	}
+
+	action, ok := Decide(event, State{}, testConfig(t, now))
+	if !ok {
+		t.Fatal("expected action")
+	}
+	if action.Kind != "question" {
+		t.Fatalf("kind = %q, want question", action.Kind)
+	}
+	req := action.Request
+	if req.Kind != "task" || req.Priority != "high" || req.Color != "amber" {
+		t.Fatalf("request = %+v", req)
+	}
+	if len(req.Placements) == 0 {
+		t.Fatal("expected a block-art frame")
+	}
+	rendered := renderedRequestText(req)
+	if !strings.Contains(rendered, "ANA") || !strings.Contains(rendered, "QUESTION") || !strings.Contains(rendered, "ANSWERNEEDED") || !strings.Contains(rendered, "❓") {
+		t.Fatalf("question frame missing useful context: %q", rendered)
+	}
+	if strings.Contains(rendered, "secret") || strings.Contains(rendered, "/Users/georgestander") {
+		t.Fatalf("question frame leaked raw context: %q", rendered)
+	}
+}
+
+func TestBuildQueuedEventDetectsPlainAssistantQuestion(t *testing.T) {
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	event, ok, err := BuildQueuedEvent("turn-ended", []byte(`{"last_message":"Which route should I take?","cwd":"/Users/georgestander/Documents/ana-board"}`), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected question event")
+	}
+	if !event.Signal.Question {
+		t.Fatalf("signal = %+v, want question", event.Signal)
+	}
+}
+
+func TestBuildQueuedEventIgnoresPlainPlanUpdate(t *testing.T) {
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	_, ok, err := BuildQueuedEvent("PostToolUse", []byte(`{"tool_name":"update_plan","message":"plan updated","cwd":"/Users/georgestander/Documents/ana-board"}`), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("expected update_plan event without a question to be skipped")
+	}
+}
+
 func TestBuildQueuedEventDoesNotTreatNoErrorsAsFailure(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	event, ok, err := BuildQueuedEvent("turn-ended", []byte(`{"last_message":"tests passed with no errors","cwd":"/Users/georgestander/Documents/ana-board"}`), now)
@@ -160,6 +224,25 @@ func TestDecideLetsFailureBypassGlobalCooldown(t *testing.T) {
 	state := State{LastSentAt: now.Add(-10 * time.Second)}
 	if _, ok := Decide(event, state, config); !ok {
 		t.Fatal("expected failure to bypass global cooldown")
+	}
+}
+
+func TestDecideLetsQuestionBypassGlobalCooldown(t *testing.T) {
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	config := testConfig(t, now)
+	config.GlobalCooldown = time.Minute
+
+	event, ok, err := BuildQueuedEvent("PostToolUse", []byte(`{"tool_name":"request_user_input"}`), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected question event")
+	}
+
+	state := State{LastSentAt: now.Add(-10 * time.Second)}
+	if _, ok := Decide(event, state, config); !ok {
+		t.Fatal("expected question to bypass global cooldown")
 	}
 }
 

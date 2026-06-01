@@ -50,6 +50,7 @@ type Signal struct {
 	Failure     string `json:"failure,omitempty"`
 	Success     string `json:"success,omitempty"`
 	Approval    bool   `json:"approval,omitempty"`
+	Question    bool   `json:"question,omitempty"`
 }
 
 type QueuedEvent struct {
@@ -274,7 +275,7 @@ func Decide(event QueuedEvent, state State, config Config) (Action, bool) {
 	if last, ok := state.LastByDigest[event.Digest]; ok && config.DuplicateCooldown > 0 && now.Sub(last) < config.DuplicateCooldown {
 		return Action{}, false
 	}
-	if !strings.HasPrefix(kind, "failure") && config.GlobalCooldown > 0 && !state.LastSentAt.IsZero() && now.Sub(state.LastSentAt) < config.GlobalCooldown {
+	if !isInterruptiveKind(kind) && config.GlobalCooldown > 0 && !state.LastSentAt.IsZero() && now.Sub(state.LastSentAt) < config.GlobalCooldown {
 		return Action{}, false
 	}
 
@@ -373,7 +374,7 @@ func (config Config) now() time.Time {
 }
 
 func (signal Signal) empty() bool {
-	return signal.Swear == "" && !signal.Celebration && signal.Failure == "" && signal.Success == "" && !signal.Approval
+	return signal.Swear == "" && !signal.Celebration && signal.Failure == "" && signal.Success == "" && !signal.Approval && !signal.Question
 }
 
 func (state *State) ensure() {
@@ -472,6 +473,9 @@ func actionKind(event QueuedEvent) string {
 		}
 		return "failure"
 	}
+	if event.Signal.Question {
+		return "question"
+	}
 	if event.Signal.Approval {
 		return "approval"
 	}
@@ -493,6 +497,10 @@ func actionKind(event QueuedEvent) string {
 	return ""
 }
 
+func isInterruptiveKind(kind string) bool {
+	return strings.HasPrefix(kind, "failure") || kind == "approval" || kind == "question"
+}
+
 func requestForKind(kind string, event QueuedEvent, source string) messages.SubmitRequest {
 	req := messages.SubmitRequest{
 		Source:    source,
@@ -509,6 +517,10 @@ func requestForKind(kind string, event QueuedEvent, source string) messages.Subm
 		req.Color = "red"
 	case "failure:build", "approval":
 		req.Kind = "warning"
+		req.Priority = "high"
+		req.Color = "amber"
+	case "question":
+		req.Kind = "task"
 		req.Priority = "high"
 		req.Color = "amber"
 	case "success", "success:test", "success:build", "celebration":
@@ -600,6 +612,8 @@ func frameLines(kind, label string) []string {
 		return []string{label, "SOMETHING", "SNAPPED ❌"}
 	case "approval":
 		return []string{label, "NEEDS YOU", "⚠️"}
+	case "question":
+		return []string{label, "QUESTION", "ANSWER NEEDED ❓"}
 	case "success:test":
 		return []string{label, "TESTS GREEN", "✅"}
 	case "success:build":
@@ -647,6 +661,14 @@ func iconPattern(kind string) []string {
 			"AAAAA",
 			"..A..",
 		}
+	case kind == "question":
+		return []string{
+			".AAA.",
+			"A...A",
+			"...A.",
+			"..A..",
+			"..A..",
+		}
 	case kind == "swear":
 		return []string{
 			"V...V",
@@ -666,7 +688,7 @@ func textColorForKind(kind string) string {
 		return "green"
 	case strings.HasPrefix(kind, "failure"):
 		return "red"
-	case kind == "approval":
+	case kind == "approval" || kind == "question":
 		return "amber"
 	case kind == "swear":
 		return "violet"

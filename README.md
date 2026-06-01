@@ -240,10 +240,11 @@ Codex notify/hooks
   -> Ana Board HTTP API
 ```
 
-`enqueue` reads a Codex payload, stores only safe signal flags, and exits without calling the board:
+`enqueue` reads a Codex payload, stores only safe signal flags, and exits without calling the board. It detects useful events such as failures, wins, approvals, profanity reactions, and Codex questions from planning/user-input flows:
 
 ```sh
 ana-board-codex-bridge enqueue --queue-dir /private/tmp/ana-board-codex-bridge/queue turn-ended '{"last_message":"tests passed"}'
+ana-board-codex-bridge enqueue --queue-dir /private/tmp/ana-board-codex-bridge/queue PostToolUse '{"tool_name":"request_user_input"}'
 ```
 
 Run the daemon under a local supervisor such as LaunchAgent:
