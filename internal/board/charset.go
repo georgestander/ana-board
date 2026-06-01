@@ -56,6 +56,7 @@ var allowedChars = map[rune]bool{
 	'/':  true,
 	'\'': true,
 	'"':  true,
+	'█':  true,
 }
 
 var emojiAliases = map[string]string{

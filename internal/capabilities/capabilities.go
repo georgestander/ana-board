@@ -1,6 +1,7 @@
 package capabilities
 
 import (
+	"github.com/georgestander/ana-board/internal/art"
 	"github.com/georgestander/ana-board/internal/board"
 	"github.com/georgestander/ana-board/internal/messages"
 )
@@ -9,6 +10,7 @@ type Capabilities struct {
 	Board        BoardInfo                `json:"board"`
 	Text         TextInfo                 `json:"text"`
 	ExactFrame   ExactFrameInfo           `json:"exact_frame"`
+	BlockArt     BlockArtInfo             `json:"block_art"`
 	Colors       []string                 `json:"colors"`
 	Kinds        []string                 `json:"kinds"`
 	Animations   []string                 `json:"animations"`
@@ -37,6 +39,13 @@ type ExactFrameInfo struct {
 	TimeSyntax      string `json:"time_syntax"`
 }
 
+type BlockArtInfo struct {
+	PixelSymbol string   `json:"pixel_symbol"`
+	Sprites     []string `json:"sprites"`
+	CLISyntax   string   `json:"cli_syntax"`
+	MCPSyntax   string   `json:"mcp_syntax"`
+}
+
 func Current() Capabilities {
 	return Capabilities{
 		Board: BoardInfo{
@@ -45,15 +54,21 @@ func Current() Capabilities {
 			MaxTiles: board.DefaultRows * board.DefaultCols,
 		},
 		Text: TextInfo{
-			AllowedCharacters: `A-Z 0-9 space . , ! ? : - / ' " plus native emoji grapheme clusters`,
+			AllowedCharacters: `A-Z 0-9 space . , ! ? : - / ' " █ plus native emoji grapheme clusters`,
 			EmojiSupport:      "Native iOS/macOS emoji are accepted directly. There is no emoji whitelist; each visible grapheme cluster counts as one tile. Aliases such as :rocket: are optional shortcuts only.",
-			ColorSyntax:       "Each tile can have its own color. Use tiles JSON for exact per-letter color, or inline tokens such as [green]A[amber]N[red]A for quick text. The message color field is only the default for untagged tiles.",
-			BestPractice:      "Use row animation. Keep updates short, concrete, and useful. Use placements or frame only when exact row and column control matters.",
+			ColorSyntax:       "Each tile can have its own color. Use tiles JSON for exact per-letter color, inline tokens such as [green]A[amber]N[red]A for quick text, or block-art frames made from colored █ pixels. The message color field is only the default for untagged tiles.",
+			BestPractice:      "Use row animation. Keep updates short, concrete, and useful. Use sprites for tiny block art, and placements or frame when exact row and column control matters.",
 		},
 		ExactFrame: ExactFrameInfo{
 			PlacementSyntax: `Use placements JSON for sparse exact control: [{"row":0,"col":0,"symbol":"A","color":"green"}]. Rows are 0-5 and columns are 0-21.`,
 			FrameSyntax:     "Use frame JSON for a full exact board: cells is 6 rows x 22 columns; colors is optional and must be the same shape when provided.",
 			TimeSyntax:      `ana-boardctl supports optional client-side exact-time sending with --at "2026-05-31T18:30:00+02:00" or the scripts/ana-board-at helper.`,
+		},
+		BlockArt: BlockArtInfo{
+			PixelSymbol: art.PixelSymbol,
+			Sprites:     art.ListSprites(),
+			CLISyntax:   `ana-boardctl send --sprite trophy or ana-boardctl frame --image ./tiny.png`,
+			MCPSyntax:   `Use ana_board_list_sprites, ana_board_preview_sprite, and ana_board_send_sprite for named block-art sprites.`,
 		},
 		Colors:       messages.AllowedColors(),
 		Kinds:        messages.AllowedKinds(),

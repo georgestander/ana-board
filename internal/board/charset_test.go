@@ -29,6 +29,11 @@ func TestIsAllowedChar(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "block pixel",
+			char: '█',
+			want: true,
+		},
+		{
 			name: "lowercase letter",
 			char: 'a',
 			want: false,

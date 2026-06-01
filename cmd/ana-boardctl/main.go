@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/georgestander/ana-board/internal/art"
 	"github.com/georgestander/ana-board/internal/board"
 	"github.com/georgestander/ana-board/internal/capabilities"
 	"github.com/georgestander/ana-board/internal/client"
@@ -30,6 +31,8 @@ func run(args []string) error {
 	}
 
 	switch args[0] {
+	case "art":
+		return runArt(args[1:])
 	case "capabilities":
 		return runCapabilities(args[1:])
 	case "preview":
@@ -50,6 +53,17 @@ func run(args []string) error {
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+func runArt(args []string) error {
+	if len(args) == 0 || args[0] == "list" {
+		for _, name := range art.ListSprites() {
+			fmt.Println(name)
+		}
+		return nil
+	}
+
+	return fmt.Errorf("unknown art command %q", args[0])
 }
 
 func runCapabilities(args []string) error {
@@ -316,6 +330,8 @@ func parseMessageCommand(name string, args []string) (parsedMessageCommand, erro
 	tilesJSON := fs.String("tiles-json", "", "JSON array of exact per-tile symbols and colors")
 	placementsJSON := fs.String("placements-json", "", "JSON array of row/col tile placements")
 	frameJSON := fs.String("frame-json", "", "JSON object with 6x22 cells and optional colors")
+	sprite := fs.String("sprite", "", "named block-art sprite")
+	imagePath := fs.String("image", "", "image file to convert to block art")
 	at := fs.String("at", "", "optional exact send time, RFC3339 or local 'YYYY-MM-DD HH:MM[:SS]'")
 	jsonOut := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args); err != nil {
@@ -327,17 +343,19 @@ func parseMessageCommand(name string, args []string) (parsedMessageCommand, erro
 	hasTiles := strings.TrimSpace(*tilesJSON) != ""
 	hasPlacements := strings.TrimSpace(*placementsJSON) != ""
 	hasFrame := strings.TrimSpace(*frameJSON) != ""
+	hasSprite := strings.TrimSpace(*sprite) != ""
+	hasImage := strings.TrimSpace(*imagePath) != ""
 	payloadCount := 0
-	for _, hasPayload := range []bool{text != "", hasSegments, hasTiles, hasPlacements, hasFrame} {
+	for _, hasPayload := range []bool{text != "", hasSegments, hasTiles, hasPlacements, hasFrame, hasSprite, hasImage} {
 		if hasPayload {
 			payloadCount++
 		}
 	}
 	if payloadCount == 0 {
-		return parsedMessageCommand{}, fmt.Errorf("%s requires message text, --segments-json, --tiles-json, --placements-json, or --frame-json", name)
+		return parsedMessageCommand{}, fmt.Errorf("%s requires message text, --segments-json, --tiles-json, --placements-json, --frame-json, --sprite, or --image", name)
 	}
 	if payloadCount > 1 {
-		return parsedMessageCommand{}, fmt.Errorf("use either text, --segments-json, --tiles-json, --placements-json, or --frame-json")
+		return parsedMessageCommand{}, fmt.Errorf("use either text, --segments-json, --tiles-json, --placements-json, --frame-json, --sprite, or --image")
 	}
 
 	req := messages.SubmitRequest{
@@ -367,6 +385,26 @@ func parseMessageCommand(name string, args []string) (parsedMessageCommand, erro
 		var frame messages.FrameInput
 		if err := json.Unmarshal([]byte(*frameJSON), &frame); err != nil {
 			return parsedMessageCommand{}, fmt.Errorf("invalid --frame-json: %w", err)
+		}
+		req.Frame = &frame
+	}
+	if hasSprite {
+		frame, err := art.SpriteFrame(*sprite)
+		if err != nil {
+			return parsedMessageCommand{}, err
+		}
+		req.Frame = &frame
+	}
+	if hasImage {
+		file, err := os.Open(*imagePath)
+		if err != nil {
+			return parsedMessageCommand{}, err
+		}
+		defer file.Close()
+
+		frame, err := art.ImageFrame(file)
+		if err != nil {
+			return parsedMessageCommand{}, err
 		}
 		req.Frame = &frame
 	}
@@ -497,11 +535,14 @@ func printHelp() {
 	fmt.Println(`ana-boardctl sends concise updates to Ana Board.
 
 Commands:
+  art list
   capabilities [--json]
   preview "[blue]HELLO 🌍"
   send [--url URL] [--source SOURCE] [--kind KIND] "[green]BUILD PASSED ✅"
   send --tiles-json '[{"symbol":"A","color":"green"},{"symbol":"N","color":"amber"},{"symbol":"A","color":"red"}]'
   send --segments-json '[{"text":"OK ","color":"green"},{"text":"FAIL","color":"red"}]'
+  send --sprite trophy --source codex
+  frame --image ./tiny.png --source codex
   frame --placements-json '[{"row":0,"col":0,"symbol":"A","color":"green"}]'
   frame --frame-json '{"cells":[["A",... 22 columns],... 6 rows]}'
   send --at "2026-05-31T18:30:00+02:00" "[amber]REMINDER ⏰"
@@ -516,6 +557,7 @@ Notes:
   Native iOS/macOS emoji can be pasted directly; aliases are optional shortcuts.
   Only row animation is supported.
   --color is only the default. Use --tiles-json for exact per-letter color, or [green] inline tokens for quick text.
+  --sprite and --image produce exact frames made from colored █ block pixels.
   Use --placements-json or --frame-json when the agent needs exact row/column control.
   --at waits client-side, then sends at that exact time.`)
 }

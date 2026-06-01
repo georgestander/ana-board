@@ -160,6 +160,9 @@ ana-boardctl preview "[blue]HELLO WORLD 🌍"
 ana-boardctl send --source codex --kind success "[green]BUILD PASSED ✅"
 ana-boardctl send --tiles-json '[{"symbol":"A","color":"green"},{"symbol":"N","color":"amber"},{"symbol":"A","color":"red"}]'
 ana-boardctl send --segments-json '[{"text":"ANA ","color":"green"},{"text":"READY ✅","color":"blue"}]'
+ana-boardctl art list
+ana-boardctl send --sprite trophy --source codex --kind success
+ana-boardctl frame --image ./tiny.png --source codex
 ana-boardctl frame --placements-json '[{"row":0,"col":0,"symbol":"A","color":"green"},{"row":5,"col":21,"symbol":"✅","color":"blue"}]'
 ana-boardctl send --at "2026-05-31T18:30:00+02:00" "[amber]REMINDER ⏰"
 ```
@@ -177,6 +180,9 @@ ANA_BOARD_URL=http://ana-board-host:18080 ana-boardctl send --source hermes "[am
 - `ana_board_capabilities`
 - `ana_board_preview_message`
 - `ana_board_send_message`
+- `ana_board_list_sprites`
+- `ana_board_preview_sprite`
+- `ana_board_send_sprite`
 - `ana_board_current`
 - `ana_board_recent_messages`
 - `ana_board_clear`, requiring `confirm=true`
@@ -224,7 +230,7 @@ Do not expose this unauthenticated API on the public internet yet. Keep it priva
 - Board size: 6 rows x 22 columns.
 - Text is normalized to uppercase.
 - Spaces collapse.
-- Allowed plain characters: `A-Z`, `0-9`, space, `.`, `,`, `!`, `?`, `:`, `-`, `/`, `'`, `"`.
+- Allowed plain characters: `A-Z`, `0-9`, space, `.`, `,`, `!`, `?`, `:`, `-`, `/`, `'`, `"`, and `█`.
 - Native emoji can be written directly. On Apple devices they render as native iOS/macOS emoji.
 - Ana Board does not use an emoji whitelist. The alias list is only a shortcut list.
 - Emoji grapheme clusters such as `✅`, `👍🏽`, `🇿🇦`, and `👨‍👩‍👧‍👦` count as one board tile.
@@ -237,6 +243,7 @@ Do not expose this unauthenticated API on the public internet yet. Keep it priva
 - Agents can also send JSON `segments` when phrases share a color: `[{"text":"OK ","color":"green"},{"text":"FAIL","color":"red"}]`.
 - Exact sparse placement can be sent with JSON `placements`: `[{"row":0,"col":0,"symbol":"A","color":"green"}]`.
 - Full exact frames can be sent with JSON `frame`: `cells` must be 6 rows x 22 columns; `colors` is optional and must match the same shape.
+- Block art uses the `█` symbol as a colored pixel. Named sprites are available through `ana-boardctl --sprite` and MCP sprite tools; local image conversion is available through `ana-boardctl --image`.
 - The `color` metadata field is only the default for tiles without an inline token or segment color.
 - Optional exact-time sending is client-side: `ana-boardctl send --at ...` waits until that time, then sends.
 

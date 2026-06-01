@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/georgestander/ana-board/internal/art"
 	"github.com/georgestander/ana-board/internal/board"
 	"github.com/georgestander/ana-board/internal/capabilities"
 	"github.com/georgestander/ana-board/internal/client"
@@ -19,7 +20,7 @@ import (
 )
 
 const protocolVersion = "2025-11-25"
-const serverVersion = "0.2.1"
+const serverVersion = "0.3.0"
 const maxRequestLineBytes = 1024 * 1024
 const maxRecentMessages = 50
 
@@ -72,6 +73,15 @@ type sendArgs struct {
 	Animation  string                `json:"animation"`
 	Kind       string                `json:"kind"`
 	Color      string                `json:"color"`
+}
+
+type spriteArgs struct {
+	Sprite    string `json:"sprite"`
+	Source    string `json:"source"`
+	Priority  string `json:"priority"`
+	Animation string `json:"animation"`
+	Kind      string `json:"kind"`
+	Color     string `json:"color"`
 }
 
 type initializeParams struct {
@@ -193,7 +203,7 @@ func handleLine(line string, boardClient *client.Client) *rpcResponse {
 				"name":    "ana-board",
 				"version": serverVersion,
 			},
-			"instructions": "Use ana_board_capabilities first. Send concise board-safe status updates. Native iOS/macOS emoji can be sent directly; there is no emoji whitelist. Use tiles JSON for exact per-letter color, or placements/frame JSON for exact row and column control. Only row animation is supported.",
+			"instructions": "Use ana_board_capabilities first. Send concise board-safe status updates. Native iOS/macOS emoji can be sent directly; there is no emoji whitelist. Use sprite tools for named block art, tiles JSON for exact per-letter color, or placements/frame JSON for exact row and column control. Only row animation is supported.",
 		})
 	case "ping":
 		return resultResponse(req.ID, map[string]any{})
@@ -237,6 +247,12 @@ func callTool(raw json.RawMessage, boardClient *client.Client) toolResult {
 		return previewTool(params.Arguments)
 	case "ana_board_send_message":
 		return sendTool(params.Arguments, boardClient)
+	case "ana_board_list_sprites":
+		return jsonToolResult(map[string][]string{"sprites": art.ListSprites()})
+	case "ana_board_preview_sprite":
+		return previewSpriteTool(params.Arguments)
+	case "ana_board_send_sprite":
+		return sendSpriteTool(params.Arguments, boardClient)
 	case "ana_board_current":
 		resp, err := boardClient.CurrentFrame(context.Background())
 		if err != nil {
@@ -268,6 +284,34 @@ func previewTool(raw json.RawMessage) toolResult {
 
 func sendTool(raw json.RawMessage, boardClient *client.Client) toolResult {
 	req, err := parseSendArgs(raw)
+	if err != nil {
+		return textToolError(err.Error())
+	}
+
+	resp, err := boardClient.SendMessage(context.Background(), req)
+	if err != nil {
+		return textToolError(err.Error())
+	}
+
+	return jsonToolResult(resp)
+}
+
+func previewSpriteTool(raw json.RawMessage) toolResult {
+	req, err := parseSpriteArgs(raw)
+	if err != nil {
+		return textToolError(err.Error())
+	}
+
+	frame, err := requestFrame(req)
+	if err != nil {
+		return textToolError(err.Error())
+	}
+
+	return jsonToolResult(frameToOutput(frame))
+}
+
+func sendSpriteTool(raw json.RawMessage, boardClient *client.Client) toolResult {
+	req, err := parseSpriteArgs(raw)
 	if err != nil {
 		return textToolError(err.Error())
 	}
@@ -329,6 +373,29 @@ func clearTool(raw json.RawMessage, boardClient *client.Client) toolResult {
 	return jsonToolResult(resp)
 }
 
+func parseSpriteArgs(raw json.RawMessage) (messages.SubmitRequest, error) {
+	var args spriteArgs
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return messages.SubmitRequest{}, fmt.Errorf("invalid sprite arguments: %w", err)
+	}
+
+	frame, err := art.SpriteFrame(args.Sprite)
+	if err != nil {
+		return messages.SubmitRequest{}, err
+	}
+
+	req := messages.SubmitRequest{
+		Frame:     &frame,
+		Source:    args.Source,
+		Priority:  args.Priority,
+		Animation: args.Animation,
+		Kind:      args.Kind,
+		Color:     args.Color,
+	}
+
+	return normalizeRequestMetadata(req)
+}
+
 func parseSendArgs(raw json.RawMessage) (messages.SubmitRequest, error) {
 	var args sendArgs
 	if err := json.Unmarshal(raw, &args); err != nil {
@@ -361,6 +428,10 @@ func parseSendArgs(raw json.RawMessage) (messages.SubmitRequest, error) {
 		return messages.SubmitRequest{}, fmt.Errorf("use either text, segments, tiles, placements, or frame")
 	}
 
+	return normalizeRequestMetadata(req)
+}
+
+func normalizeRequestMetadata(req messages.SubmitRequest) (messages.SubmitRequest, error) {
 	var err error
 	req.Source, err = messages.NormalizeSource(req.Source)
 	if err != nil {
@@ -425,6 +496,18 @@ func tools() []map[string]any {
 			"priority":   map[string]any{"type": "string", "enum": messages.AllowedPriorities()},
 		},
 	}
+	spriteMessageSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"sprite":    map[string]any{"type": "string", "enum": art.ListSprites(), "description": "Named block-art sprite to render as colored █ pixels."},
+			"source":    map[string]string{"type": "string", "description": "Short sender name such as codex, hermes, claude, opencode."},
+			"kind":      map[string]any{"type": "string", "enum": messages.AllowedKinds()},
+			"color":     map[string]any{"type": "string", "enum": messages.AllowedColors(), "description": "Message default color metadata. Sprite pixels keep their own colors."},
+			"animation": map[string]any{"type": "string", "enum": messages.AllowedAnimations(), "description": "Only row is supported."},
+			"priority":  map[string]any{"type": "string", "enum": messages.AllowedPriorities()},
+		},
+		"required": []string{"sprite"},
+	}
 
 	return []map[string]any{
 		{
@@ -446,6 +529,27 @@ func tools() []map[string]any {
 			"title":       "Send Ana Board Message",
 			"description": "Display a concise status message or exact placed frame on Ana Board.",
 			"inputSchema": messageSchema,
+			"annotations": map[string]any{"readOnlyHint": false, "idempotentHint": false, "openWorldHint": false},
+		},
+		{
+			"name":        "ana_board_list_sprites",
+			"title":       "List Ana Board Sprites",
+			"description": "List named block-art sprites available for Ana Board.",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
+			"annotations": map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		},
+		{
+			"name":        "ana_board_preview_sprite",
+			"title":       "Preview Ana Board Sprite",
+			"description": "Preview a named block-art sprite as a 6x22 colored frame.",
+			"inputSchema": spriteMessageSchema,
+			"annotations": map[string]any{"readOnlyHint": true, "openWorldHint": false},
+		},
+		{
+			"name":        "ana_board_send_sprite",
+			"title":       "Send Ana Board Sprite",
+			"description": "Display a named block-art sprite on Ana Board.",
+			"inputSchema": spriteMessageSchema,
 			"annotations": map[string]any{"readOnlyHint": false, "idempotentHint": false, "openWorldHint": false},
 		},
 		{

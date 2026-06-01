@@ -1,8 +1,15 @@
 package main
 
 import (
+	"image"
+	"image/color"
+	"image/png"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/georgestander/ana-board/internal/art"
 )
 
 func TestParseMessageCommandSupportsExactPlacements(t *testing.T) {
@@ -29,6 +36,54 @@ func TestParseMessageCommandRejectsMixedPayloads(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("parseMessageCommand returned nil error, want mixed payload error")
+	}
+}
+
+func TestParseMessageCommandSupportsSprite(t *testing.T) {
+	parsed, err := parseMessageCommand("frame", []string{
+		"--sprite", "trophy",
+		"--source", "codex",
+	})
+	if err != nil {
+		t.Fatalf("parseMessageCommand returned error: %v", err)
+	}
+
+	if parsed.Request.Frame == nil {
+		t.Fatal("frame = nil, want sprite frame")
+	}
+	if parsed.Request.Frame.Cells[0][0] != " " {
+		t.Fatalf("first cell = %q, want blank", parsed.Request.Frame.Cells[0][0])
+	}
+}
+
+func TestParseMessageCommandSupportsImage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tiny.png")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	img := image.NewNRGBA(image.Rect(0, 0, 22, 6))
+	img.SetNRGBA(0, 0, color.NRGBA{R: 228, G: 191, B: 114, A: 255})
+	if err := png.Encode(file, img); err != nil {
+		t.Fatalf("png.Encode returned error: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+
+	parsed, err := parseMessageCommand("frame", []string{
+		"--image", path,
+		"--source", "codex",
+	})
+	if err != nil {
+		t.Fatalf("parseMessageCommand returned error: %v", err)
+	}
+
+	if parsed.Request.Frame == nil {
+		t.Fatal("frame = nil, want image frame")
+	}
+	if parsed.Request.Frame.Cells[0][0] != art.PixelSymbol {
+		t.Fatalf("first cell = %q, want block pixel", parsed.Request.Frame.Cells[0][0])
 	}
 }
 

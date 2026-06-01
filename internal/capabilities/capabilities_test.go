@@ -27,4 +27,12 @@ func TestCurrentDescribesNativeEmojiAndPerTileColor(t *testing.T) {
 	if !strings.Contains(caps.ExactFrame.PlacementSyntax, "Rows are 0-5") {
 		t.Fatalf("PlacementSyntax = %q, want row/column guidance", caps.ExactFrame.PlacementSyntax)
 	}
+
+	if caps.BlockArt.PixelSymbol != "█" {
+		t.Fatalf("PixelSymbol = %q, want block pixel", caps.BlockArt.PixelSymbol)
+	}
+
+	if len(caps.BlockArt.Sprites) == 0 {
+		t.Fatal("BlockArt.Sprites is empty")
+	}
 }

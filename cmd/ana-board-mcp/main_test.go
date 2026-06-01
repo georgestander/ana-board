@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/georgestander/ana-board/internal/art"
 )
 
 func TestHandleLineRespondsToPing(t *testing.T) {
@@ -120,6 +122,55 @@ func TestParseSendArgsSupportsExactPlacements(t *testing.T) {
 	}
 	if req.Placements[0].Symbol != "A" {
 		t.Fatalf("symbol = %q, want A", req.Placements[0].Symbol)
+	}
+}
+
+func TestParseSpriteArgsBuildsFrameRequest(t *testing.T) {
+	req, err := parseSpriteArgs([]byte(`{"sprite":"rocket","source":"codex"}`))
+	if err != nil {
+		t.Fatalf("parseSpriteArgs returned error: %v", err)
+	}
+
+	if req.Frame == nil {
+		t.Fatal("frame = nil, want sprite frame")
+	}
+	if req.Source != "codex" {
+		t.Fatalf("source = %q, want codex", req.Source)
+	}
+}
+
+func TestParseSpriteArgsRejectsUnknownSprite(t *testing.T) {
+	_, err := parseSpriteArgs([]byte(`{"sprite":"nope"}`))
+	if err == nil {
+		t.Fatal("parseSpriteArgs returned nil error, want unknown sprite error")
+	}
+}
+
+func TestToolsListIncludesSpriteTools(t *testing.T) {
+	raw, err := json.Marshal(tools())
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	text := string(raw)
+	for _, want := range []string{"ana_board_list_sprites", "ana_board_preview_sprite", "ana_board_send_sprite"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("tools did not include %q: %s", want, text)
+		}
+	}
+}
+
+func TestPreviewSpriteToolReturnsBlockFrame(t *testing.T) {
+	result := previewSpriteTool([]byte(`{"sprite":"heart"}`))
+	if result.IsError {
+		t.Fatalf("previewSpriteTool returned error: %#v", result.Content)
+	}
+
+	raw, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	if !strings.Contains(string(raw), art.PixelSymbol) {
+		t.Fatalf("preview frame did not contain block pixel: %s", string(raw))
 	}
 }
 
