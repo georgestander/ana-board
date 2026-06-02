@@ -224,6 +224,64 @@ func TestBuildQueuedEventDoesNotTreatNoErrorsAsFailure(t *testing.T) {
 	}
 }
 
+func TestBuildQueuedEventRendersRichSuccessFrame(t *testing.T) {
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	event, ok, err := BuildQueuedEvent("turn-ended", []byte(`{"last_message":"implemented and complete","cwd":"/Users/georgestander/dev/clients/valueinresearch/vir_2030","thread_id":"success-thread-secret"}`), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected success event")
+	}
+
+	action, ok := Decide(event, State{}, testConfig(t, now))
+	if !ok {
+		t.Fatal("expected action")
+	}
+	if action.Kind != "success" {
+		t.Fatalf("kind = %q, want success", action.Kind)
+	}
+	if len(action.Request.Placements) < 50 {
+		t.Fatalf("expected a rich success frame, got %d placements", len(action.Request.Placements))
+	}
+	rendered := renderedRequestText(action.Request)
+	if !strings.Contains(rendered, "VIR2030") || !strings.Contains(rendered, "RE:THREAD") || !strings.Contains(rendered, "✅") {
+		t.Fatalf("success frame missing context: %q", rendered)
+	}
+	if strings.Contains(rendered, "LANDED") || strings.Contains(rendered, "success-thread") {
+		t.Fatalf("success frame kept stale wording or leaked thread: %q", rendered)
+	}
+}
+
+func TestBuildQueuedEventRendersRichFailureFrame(t *testing.T) {
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	event, ok, err := BuildQueuedEvent("turn-ended", []byte(`{"last_message":"command failed with panic","cwd":"/Users/georgestander/Documents/ana-board","thread_id":"failure-thread-secret"}`), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected failure event")
+	}
+
+	action, ok := Decide(event, State{}, testConfig(t, now))
+	if !ok {
+		t.Fatal("expected action")
+	}
+	if action.Kind != "failure" {
+		t.Fatalf("kind = %q, want failure", action.Kind)
+	}
+	if len(action.Request.Placements) < 50 {
+		t.Fatalf("expected a rich failure frame, got %d placements", len(action.Request.Placements))
+	}
+	rendered := renderedRequestText(action.Request)
+	if !strings.Contains(rendered, "ANA") || !strings.Contains(rendered, "RE:ERROR") || !strings.Contains(rendered, "❌") {
+		t.Fatalf("failure frame missing context: %q", rendered)
+	}
+	if strings.Contains(rendered, "SOMETHINGSNAPPED") || strings.Contains(rendered, "failure-thread") {
+		t.Fatalf("failure frame kept stale wording or leaked thread: %q", rendered)
+	}
+}
+
 func TestDecideSuppressesDuplicateKindWithinCooldown(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	config := testConfig(t, now)
