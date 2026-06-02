@@ -168,7 +168,7 @@ func BuildQueuedEvent(eventName string, payload []byte, now time.Time) (QueuedEv
 	}
 
 	eventContext := extractContext(fields)
-	if !signal.Question {
+	if !signal.Question && !signal.Approval {
 		eventContext.Topic = ""
 	}
 	digest := eventDigest(eventName, signal, eventContext)
@@ -547,6 +547,9 @@ func composeFrame(kind string, event QueuedEvent) ([]messages.PlacedTile, bool) 
 	if kind == "question" {
 		return composeQuestionFrame(event)
 	}
+	if kind == "approval" {
+		return composeApprovalFrame(event)
+	}
 
 	label := event.Context.DisplayLabel()
 	lines := frameLines(kind, label)
@@ -582,7 +585,7 @@ func composeFrame(kind string, event QueuedEvent) ([]messages.PlacedTile, bool) 
 
 func composeQuestionFrame(event QueuedEvent) ([]messages.PlacedTile, bool) {
 	placements := make([]messages.PlacedTile, 0, 120)
-	header := questionHeader(event.Context)
+	header := richFrameHeader(event.Context)
 	topic := strings.TrimSpace(event.Context.Topic)
 	if topic == "" {
 		topic = "OPEN QUESTION"
@@ -640,6 +643,66 @@ func composeQuestionFrame(event QueuedEvent) ([]messages.PlacedTile, bool) {
 	return placements, len(placements) != 0
 }
 
+func composeApprovalFrame(event QueuedEvent) ([]messages.PlacedTile, bool) {
+	placements := make([]messages.PlacedTile, 0, 120)
+	header := richFrameHeader(event.Context)
+	topic := strings.TrimSpace(event.Context.Topic)
+	if topic == "" {
+		topic = "PERMISSION"
+	}
+
+	if !addTextLine(&placements, 0, 0, board.DefaultCols, header, "blue") {
+		return nil, false
+	}
+
+	icon := []string{
+		"..A..",
+		".AAA.",
+		"AAAAA",
+		"AAAAA",
+		".AAA.",
+		"..A..",
+		"..V..",
+	}
+	for rowOffset, line := range icon {
+		for colOffset, marker := range line {
+			color, ok := iconColors[marker]
+			if !ok {
+				continue
+			}
+			placements = append(placements, messages.PlacedTile{
+				Row:    2 + rowOffset,
+				Col:    1 + colOffset,
+				Symbol: "█",
+				Color:  color,
+			})
+		}
+	}
+
+	lines := approvalLines(event.Digest)
+	textLines := []struct {
+		row   int
+		text  string
+		color string
+	}{
+		{1, lines[0], "amber"},
+		{2, lines[1], "amber"},
+		{3, lines[2], "amber"},
+		{5, "RE: " + topic, "blue"},
+		{7, lines[3], "violet"},
+	}
+	for _, line := range textLines {
+		if !addTextLine(&placements, line.row, 7, board.DefaultCols-7, line.text, line.color) {
+			return nil, false
+		}
+	}
+	if !addTextLine(&placements, 9, 1, board.DefaultCols-2, "APPROVE OR NIX", "amber") {
+		return nil, false
+	}
+
+	return placements, len(placements) != 0
+}
+
 func addTextLine(placements *[]messages.PlacedTile, row, col, max int, text, color string) bool {
 	symbols, err := board.NormalizeSymbols(text)
 	if err != nil {
@@ -660,7 +723,7 @@ func addTextLine(placements *[]messages.PlacedTile, row, col, max int, text, col
 	return true
 }
 
-func questionHeader(context Context) string {
+func richFrameHeader(context Context) string {
 	label := context.DisplayLabel()
 	topic := strings.TrimSpace(context.Topic)
 	if topic == "" {
@@ -672,6 +735,19 @@ func questionHeader(context Context) string {
 		return header
 	}
 	return label
+}
+
+func approvalLines(digest string) []string {
+	variants := [][]string{
+		{"ROBOT PAUSED", "AT THE GATE", "YOUR CALL ✋", "NO BUTTON NO GO"},
+		{"NEEDS OK", "BEFORE IT MOVES", "YOUR CALL ✋", "GREENLIGHT IT"},
+		{"HOLDING HERE", "FOR PERMISSION", "NO SNEAKY SHIT", "GIVE IT A NOD"},
+		{"TINY BRAKES ON", "UNTIL YOU SAY", "GO OR NO ✋", "YOUR MOVE"},
+	}
+	if digest == "" {
+		return variants[0]
+	}
+	return variants[int(digest[0])%len(variants)]
 }
 
 func questionLines(digest string) []string {

@@ -154,6 +154,45 @@ func TestBuildQueuedEventDetectsPlainAssistantQuestion(t *testing.T) {
 	}
 }
 
+func TestBuildQueuedEventRendersRichApprovalFrame(t *testing.T) {
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	event, ok, err := BuildQueuedEvent("PermissionRequest", []byte(`{"tool_name":"shell_command","title":"Run Tests","cwd":"/Users/georgestander/Documents/ana-board","thread_id":"approval-thread-secret"}`), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected approval event")
+	}
+	if !event.Signal.Approval {
+		t.Fatalf("signal = %+v, want approval", event.Signal)
+	}
+	if event.Context.Topic != "RUN TESTS" {
+		t.Fatalf("topic = %q, want RUN TESTS", event.Context.Topic)
+	}
+
+	action, ok := Decide(event, State{}, testConfig(t, now))
+	if !ok {
+		t.Fatal("expected action")
+	}
+	if action.Kind != "approval" {
+		t.Fatalf("kind = %q, want approval", action.Kind)
+	}
+	req := action.Request
+	if req.Kind != "warning" || req.Priority != "high" || req.Color != "amber" {
+		t.Fatalf("request = %+v", req)
+	}
+	if len(req.Placements) < 40 {
+		t.Fatalf("expected a rich block-art frame, got %d placements", len(req.Placements))
+	}
+	rendered := renderedRequestText(req)
+	if !strings.Contains(rendered, "ANA") || !strings.Contains(rendered, "RUNTESTS") || !strings.Contains(rendered, "APPROVEORNIX") {
+		t.Fatalf("approval frame missing useful context: %q", rendered)
+	}
+	if strings.Contains(rendered, "secret") || strings.Contains(rendered, "/Users/georgestander") || strings.Contains(rendered, "shell") {
+		t.Fatalf("approval frame leaked raw context: %q", rendered)
+	}
+}
+
 func TestBuildQueuedEventIgnoresPlainPlanUpdate(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	_, ok, err := BuildQueuedEvent("PostToolUse", []byte(`{"tool_name":"update_plan","message":"plan updated","cwd":"/Users/georgestander/Documents/ana-board"}`), now)
