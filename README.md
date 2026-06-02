@@ -240,10 +240,10 @@ Codex notify/hooks
   -> Ana Board HTTP API
 ```
 
-`enqueue` reads a Codex payload, stores only safe signal flags, compact project labels, internal thread labels, and short non-prompt topic labels when a hook provides one. It exits without calling the board. It detects useful events such as failures, wins, profanity reactions, approval prompts, and Codex questions from planning/user-input flows. The bridge is intentionally a fallback notifier, not a personality engine: visible bridge frames are terse project/topic alerts, while natural context-rich board notes should be written live by Codex through MCP when Codex has the real thread context. Internal thread hashes are not displayed:
+`enqueue` reads a Codex payload, stores only safe signal flags, compact project labels, internal thread labels, and short non-prompt topic labels when a hook provides one. It exits without calling the board. It detects high-signal events such as failures, profanity reactions, approval prompts, Codex questions from planning/user-input flows, and real milestones such as deploys, releases, pushes, tags, or merges. Routine turn-ended completions and passing tests are intentionally skipped. The bridge is intentionally a fallback notifier, not a personality engine: visible bridge frames are terse project/topic alerts, while natural context-rich board notes should be written live by Codex through MCP when Codex has the real thread context. Internal thread hashes are not displayed:
 
 ```sh
-ana-board-codex-bridge enqueue --queue-dir /private/tmp/ana-board-codex-bridge/queue turn-ended '{"last_message":"tests passed"}'
+ana-board-codex-bridge enqueue --queue-dir /private/tmp/ana-board-codex-bridge/queue turn-ended '{"last_message":"v0.5.7 released and pushed to GitHub"}'
 ana-board-codex-bridge enqueue --queue-dir /private/tmp/ana-board-codex-bridge/queue PostToolUse '{"tool_name":"request_user_input","questions":[{"header":"Scope"}]}'
 ```
 

@@ -81,10 +81,10 @@ func classify(eventName string, fields []textField) Signal {
 		if !signal.Celebration && isPromptLikeEvent(lowerEvent, field.Key) && containsAny(lowerText, celebrationNeedles) {
 			signal.Celebration = true
 		}
-		if signal.Failure == "" && containsFailure(lowerText) {
+		if signal.Failure == "" && isOutcomeLikeEventField(lowerEvent, lowerKey) && containsFailure(lowerText) {
 			signal.Failure = failureKind(lowerText)
 		}
-		if signal.Success == "" && containsSuccess(lowerText) {
+		if signal.Success == "" && isOutcomeLikeEventField(lowerEvent, lowerKey) && containsSuccess(lowerText) {
 			signal.Success = successKind(lowerText)
 		}
 		if !signal.Approval && containsAny(lowerText, approvalNeedles) {
@@ -140,6 +140,23 @@ func isPromptLikeEvent(eventName, key string) bool {
 	return false
 }
 
+func isOutcomeLikeEventField(eventName, key string) bool {
+	if strings.Contains(eventName, "user") || strings.Contains(eventName, "prompt") {
+		return false
+	}
+	for _, part := range []string{"prompt", "user", "input", "instruction", "question", "header", "title", "id", "cwd", "workdir", "thread", "session"} {
+		if strings.Contains(key, part) {
+			return false
+		}
+	}
+	for _, part := range []string{"last_message", "assistant", "response", "reply", "result", "output", "stderr", "stdout", "error", "summary", "message"} {
+		if strings.Contains(key, part) {
+			return true
+		}
+	}
+	return !strings.Contains(eventName, "turn")
+}
+
 func detectedSwear(text string) string {
 	for _, word := range []string{"fucking", "fuck", "wtf", "bullshit", "shit", "damn"} {
 		if containsTokenish(text, word) {
@@ -166,7 +183,7 @@ func containsFailure(text string) bool {
 }
 
 func failureKind(text string) string {
-	if strings.Contains(text, "test") {
+	if containsAny(text, []string{"test fail", "tests fail", "test failed", "tests failed", "failing test", "failing tests"}) {
 		return "test"
 	}
 	if strings.Contains(text, "build") {
@@ -176,33 +193,42 @@ func failureKind(text string) string {
 }
 
 func containsSuccess(text string) bool {
-	if containsAny(text, []string{"not done", "not complete", "not completed"}) {
+	if containsAny(text, []string{"not done", "not complete", "not completed", "not released", "not deployed", "not pushed"}) {
 		return false
 	}
 	return containsAny(text, []string{
-		"test passed",
-		"tests passed",
-		"build passed",
-		"passed",
-		"implemented",
-		"complete",
-		"completed",
-		"fixed",
-		"done",
 		"deployed",
+		"deploy complete",
+		"released",
+		"release complete",
+		"github release",
+		"published release",
+		"tagged",
+		"tag pushed",
 		"pushed",
-		"commit",
+		"pushed to github",
+		"merged",
+		"shipped",
 	})
 }
 
 func successKind(text string) string {
-	if strings.Contains(text, "test") {
-		return "test"
+	if strings.Contains(text, "release") || strings.Contains(text, "released") {
+		return "release"
 	}
-	if strings.Contains(text, "build") {
-		return "build"
+	if strings.Contains(text, "deploy") || strings.Contains(text, "deployed") {
+		return "deploy"
 	}
-	return "general"
+	if strings.Contains(text, "push") || strings.Contains(text, "pushed") {
+		return "push"
+	}
+	if strings.Contains(text, "tag") || strings.Contains(text, "tagged") {
+		return "tag"
+	}
+	if strings.Contains(text, "merge") || strings.Contains(text, "merged") {
+		return "merge"
+	}
+	return "milestone"
 }
 
 func containsAny(text string, needles []string) bool {

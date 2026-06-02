@@ -20,7 +20,7 @@ import (
 )
 
 const protocolVersion = "2025-11-25"
-const serverVersion = "0.5.6"
+const serverVersion = "0.5.7"
 const maxRequestLineBytes = 1024 * 1024
 const maxRecentMessages = 50
 

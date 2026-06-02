@@ -102,6 +102,28 @@ func TestBuildQueuedEventDropsBlandTurnEnded(t *testing.T) {
 	}
 }
 
+func TestBuildQueuedEventDropsGenericCompletionTurnEnded(t *testing.T) {
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	_, ok, err := BuildQueuedEvent("turn-ended", []byte(`{"last_message":"implemented and complete","cwd":"/Users/georgestander/dev/clients/valueinresearch/vir_2030","thread_id":"success-thread-secret"}`), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("expected generic completion to be skipped")
+	}
+}
+
+func TestBuildQueuedEventIgnoresDelegationPromptFailureText(t *testing.T) {
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	_, ok, err := BuildQueuedEvent("turn-ended", []byte(`{"input":"Ana Board notifier smoke test failed loudly","last_message":"implemented and complete","cwd":"/Users/georgestander/Documents/ana-board","thread_id":"delegation-thread-secret"}`), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("expected prompt/input failure wording to be ignored")
+	}
+}
+
 func TestBuildQueuedEventDetectsRequestUserInputQuestion(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	event, ok, err := BuildQueuedEvent("PostToolUse", []byte(`{"tool_name":"request_user_input","questions":[{"header":"Scope","id":"release_scope"}],"cwd":"/Users/georgestander/Documents/ana-board","thread_id":"planning-thread-secret"}`), now)
@@ -216,56 +238,50 @@ func TestBuildQueuedEventIgnoresPlainPlanUpdate(t *testing.T) {
 	}
 }
 
-func TestBuildQueuedEventDoesNotTreatNoErrorsAsFailure(t *testing.T) {
+func TestBuildQueuedEventDropsRoutineTestPasses(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
-	event, ok, err := BuildQueuedEvent("turn-ended", []byte(`{"last_message":"tests passed with no errors","cwd":"/Users/georgestander/Documents/ana-board"}`), now)
+	_, ok, err := BuildQueuedEvent("turn-ended", []byte(`{"last_message":"tests passed with no errors","cwd":"/Users/georgestander/Documents/ana-board"}`), now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok {
-		t.Fatal("expected success event")
-	}
-	if event.Signal.Failure != "" {
-		t.Fatalf("failure = %q, want empty", event.Signal.Failure)
-	}
-	if event.Signal.Success != "test" {
-		t.Fatalf("success = %q, want test", event.Signal.Success)
-	}
-	if event.Context.Project != "ANA" {
-		t.Fatalf("project = %q, want ANA", event.Context.Project)
+	if ok {
+		t.Fatal("expected routine test pass to be skipped")
 	}
 }
 
-func TestBuildQueuedEventRendersMinimalSuccessFrame(t *testing.T) {
+func TestBuildQueuedEventRendersMinimalMilestoneFrame(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
-	event, ok, err := BuildQueuedEvent("turn-ended", []byte(`{"last_message":"implemented and complete","cwd":"/Users/georgestander/dev/clients/valueinresearch/vir_2030","thread_id":"success-thread-secret"}`), now)
+	event, ok, err := BuildQueuedEvent("turn-ended", []byte(`{"last_message":"v0.5.7 released and pushed to GitHub","cwd":"/Users/georgestander/Documents/ana-board","thread_id":"success-thread-secret"}`), now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !ok {
-		t.Fatal("expected success event")
+		t.Fatal("expected milestone event")
+	}
+	if event.Signal.Success != "release" {
+		t.Fatalf("success = %q, want release", event.Signal.Success)
 	}
 
 	action, ok := Decide(event, State{}, testConfig(t, now))
 	if !ok {
 		t.Fatal("expected action")
 	}
-	if action.Kind != "success" {
-		t.Fatalf("kind = %q, want success", action.Kind)
+	if action.Kind != "success:release" {
+		t.Fatalf("kind = %q, want success:release", action.Kind)
 	}
 	if len(action.Request.Placements) < 20 {
-		t.Fatalf("expected a fallback success frame, got %d placements", len(action.Request.Placements))
+		t.Fatalf("expected a fallback milestone frame, got %d placements", len(action.Request.Placements))
 	}
 	rendered := renderedRequestText(action.Request)
-	if !strings.Contains(rendered, "VIR2030") || !strings.Contains(rendered, "DONE") || !strings.Contains(rendered, "✅") {
-		t.Fatalf("success frame missing context: %q", rendered)
+	if !strings.Contains(rendered, "ANA") || !strings.Contains(rendered, "RELEASED") || !strings.Contains(rendered, "✅") {
+		t.Fatalf("milestone frame missing context: %q", rendered)
 	}
 	assertNoBridgeFiller(t, rendered)
 	if strings.Contains(rendered, "success-thread") {
-		t.Fatalf("success frame leaked thread: %q", rendered)
+		t.Fatalf("milestone frame leaked thread: %q", rendered)
 	}
 	if strings.Contains(rendered, event.Context.Thread) {
-		t.Fatalf("success frame displayed internal thread hash %q: %q", event.Context.Thread, rendered)
+		t.Fatalf("milestone frame displayed internal thread hash %q: %q", event.Context.Thread, rendered)
 	}
 }
 
@@ -299,6 +315,20 @@ func TestBuildQueuedEventRendersMinimalFailureFrame(t *testing.T) {
 	}
 	if strings.Contains(rendered, event.Context.Thread) {
 		t.Fatalf("failure frame displayed internal thread hash %q: %q", event.Context.Thread, rendered)
+	}
+}
+
+func TestBuildQueuedEventClassifiesExplicitTestFailureOnly(t *testing.T) {
+	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	event, ok, err := BuildQueuedEvent("turn-ended", []byte(`{"last_message":"tests failed in fresh thread smoke","cwd":"/Users/georgestander/Documents/ana-board","thread_id":"test-failure-thread-secret"}`), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected explicit test failure event")
+	}
+	if event.Signal.Failure != "test" {
+		t.Fatalf("failure = %q, want test", event.Signal.Failure)
 	}
 }
 
@@ -370,7 +400,7 @@ func TestEnqueueAndProcessOncePostsThenDeletesSignal(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	config := testConfig(t, now)
 
-	result, err := Enqueue(config, "turn-ended", []byte(`{"last_message":"tests passed"}`))
+	result, err := Enqueue(config, "turn-ended", []byte(`{"last_message":"v0.5.7 released and pushed to GitHub","cwd":"/Users/georgestander/Documents/ana-board"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,8 +427,8 @@ func TestEnqueueAndProcessOncePostsThenDeletesSignal(t *testing.T) {
 		t.Fatalf("request = %+v", req)
 	}
 	rendered := renderedRequestText(req)
-	if !strings.Contains(rendered, "TESTS") || !strings.Contains(rendered, "✅") {
-		t.Fatalf("request should include contextual test success with emoji, got %q", rendered)
+	if !strings.Contains(rendered, "RELEASED") || !strings.Contains(rendered, "✅") {
+		t.Fatalf("request should include contextual milestone success with emoji, got %q", rendered)
 	}
 	assertNoBridgeFiller(t, rendered)
 	if len(req.Placements) == 0 {

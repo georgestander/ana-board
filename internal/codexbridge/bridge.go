@@ -489,13 +489,10 @@ func actionKind(event QueuedEvent) string {
 		return "celebration"
 	}
 	if event.Signal.Success != "" {
-		if event.Signal.Success == "test" {
-			return "success:test"
+		switch event.Signal.Success {
+		case "release", "deploy", "push", "tag", "merge", "milestone":
+			return "success:" + event.Signal.Success
 		}
-		if event.Signal.Success == "build" {
-			return "success:build"
-		}
-		return "success"
 	}
 	return ""
 }
@@ -526,7 +523,7 @@ func requestForKind(kind string, event QueuedEvent, source string) messages.Subm
 		req.Kind = "task"
 		req.Priority = "high"
 		req.Color = "amber"
-	case "success", "success:test", "success:build", "celebration":
+	case "success", "success:test", "success:build", "success:release", "success:deploy", "success:push", "success:tag", "success:merge", "success:milestone", "celebration":
 		req.Kind = "success"
 		req.Color = "green"
 	case "swear":
@@ -623,6 +620,18 @@ func fallbackAlert(kind string, event QueuedEvent) (bridgeAlert, bool) {
 		alert.line1 = "BUILD OK ✅"
 	case "success":
 		alert.line1 = "DONE ✅"
+	case "success:release":
+		alert.line1 = "RELEASED ✅"
+	case "success:deploy":
+		alert.line1 = "DEPLOYED 🚀"
+	case "success:push":
+		alert.line1 = "PUSHED ✅"
+	case "success:tag":
+		alert.line1 = "TAGGED ✅"
+	case "success:merge":
+		alert.line1 = "MERGED ✅"
+	case "success:milestone":
+		alert.line1 = "MILESTONE ✅"
 	case "failure:test":
 		alert.line1 = "TESTS FAILED ❌"
 	case "failure:build":
