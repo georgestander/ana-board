@@ -18,14 +18,6 @@ func (context Context) DisplayLabel() string {
 	if project == "" {
 		project = "CODEX"
 	}
-	thread := strings.TrimSpace(context.Thread)
-	if thread == "" {
-		return project
-	}
-	label := project + " " + thread
-	if len(label) <= 15 {
-		return label
-	}
 	return project
 }
 

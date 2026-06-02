@@ -785,7 +785,7 @@ func signalTopic(kind string) string {
 	case "success:build", "failure:build":
 		return "BUILD"
 	case "success":
-		return "THREAD"
+		return "WORK"
 	case "failure":
 		return "ERROR"
 	case "celebration":
@@ -814,8 +814,8 @@ func signalLines(kind, digest string) []string {
 		}
 	case "success":
 		variants = [][]string{
-			{"DONE", "THREAD OK", "✅", "LOGGED IT", "KEEP MOVING"},
-			{"WORK DONE", "THREAD OK", "✅", "SMALL WIN", "NEXT THING"},
+			{"DONE", "LOOKS OK", "✅", "LOGGED IT", "KEEP MOVING"},
+			{"WORK DONE", "LOOKS OK", "✅", "SMALL WIN", "NEXT THING"},
 			{"ALL SET", "FOR NOW", "✅", "LOGGED IT", "NEXT THING"},
 		}
 	case "failure:test":

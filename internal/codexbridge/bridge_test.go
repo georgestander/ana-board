@@ -85,6 +85,9 @@ func TestBuildQueuedEventDistillsSwearAndSafeContextWithoutRawPrompt(t *testing.
 	if strings.Contains(strings.ToLower(rendered), "why") {
 		t.Fatalf("message leaked prompt content: %q", rendered)
 	}
+	if strings.Contains(rendered, event.Context.Thread) {
+		t.Fatalf("message displayed internal thread hash %q: %q", event.Context.Thread, rendered)
+	}
 }
 
 func TestBuildQueuedEventDropsBlandTurnEnded(t *testing.T) {
@@ -138,6 +141,9 @@ func TestBuildQueuedEventDetectsRequestUserInputQuestion(t *testing.T) {
 	if strings.Contains(rendered, "secret") || strings.Contains(rendered, "/Users/georgestander") || strings.Contains(rendered, "release") {
 		t.Fatalf("question frame leaked raw context: %q", rendered)
 	}
+	if strings.Contains(rendered, event.Context.Thread) {
+		t.Fatalf("question frame displayed internal thread hash %q: %q", event.Context.Thread, rendered)
+	}
 }
 
 func TestBuildQueuedEventDetectsPlainAssistantQuestion(t *testing.T) {
@@ -190,6 +196,9 @@ func TestBuildQueuedEventRendersRichApprovalFrame(t *testing.T) {
 	}
 	if strings.Contains(rendered, "secret") || strings.Contains(rendered, "/Users/georgestander") || strings.Contains(rendered, "shell") {
 		t.Fatalf("approval frame leaked raw context: %q", rendered)
+	}
+	if strings.Contains(rendered, event.Context.Thread) {
+		t.Fatalf("approval frame displayed internal thread hash %q: %q", event.Context.Thread, rendered)
 	}
 }
 
@@ -245,11 +254,14 @@ func TestBuildQueuedEventRendersRichSuccessFrame(t *testing.T) {
 		t.Fatalf("expected a rich success frame, got %d placements", len(action.Request.Placements))
 	}
 	rendered := renderedRequestText(action.Request)
-	if !strings.Contains(rendered, "VIR2030") || !strings.Contains(rendered, "RE:THREAD") || !strings.Contains(rendered, "✅") {
+	if !strings.Contains(rendered, "VIR2030") || !strings.Contains(rendered, "RE:WORK") || !strings.Contains(rendered, "✅") {
 		t.Fatalf("success frame missing context: %q", rendered)
 	}
 	if strings.Contains(rendered, "LANDED") || strings.Contains(rendered, "success-thread") {
 		t.Fatalf("success frame kept stale wording or leaked thread: %q", rendered)
+	}
+	if strings.Contains(rendered, event.Context.Thread) {
+		t.Fatalf("success frame displayed internal thread hash %q: %q", event.Context.Thread, rendered)
 	}
 }
 
@@ -279,6 +291,9 @@ func TestBuildQueuedEventRendersRichFailureFrame(t *testing.T) {
 	}
 	if strings.Contains(rendered, "SOMETHINGSNAPPED") || strings.Contains(rendered, "failure-thread") {
 		t.Fatalf("failure frame kept stale wording or leaked thread: %q", rendered)
+	}
+	if strings.Contains(rendered, event.Context.Thread) {
+		t.Fatalf("failure frame displayed internal thread hash %q: %q", event.Context.Thread, rendered)
 	}
 }
 
