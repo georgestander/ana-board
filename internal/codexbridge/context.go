@@ -77,8 +77,6 @@ func topicCandidate(key, text string) (string, int, bool) {
 			priority = minPositive(priority, 2)
 		case "id":
 			priority = minPositive(priority, 3)
-		case "tool_name", "tool":
-			priority = minPositive(priority, 4)
 		}
 	}
 	if priority == 0 {
@@ -114,10 +112,6 @@ func isSensitiveTopicKey(key string) bool {
 }
 
 func topicLabelFromText(text string) string {
-	lower := strings.ToLower(text)
-	if strings.Contains(lower, "request_user_input") || strings.Contains(lower, "ask_user") {
-		return "USER INPUT"
-	}
 	return compactPhraseLabel(text, 15)
 }
 

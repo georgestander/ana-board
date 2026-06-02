@@ -88,6 +88,7 @@ func TestBuildQueuedEventDistillsSwearAndSafeContextWithoutRawPrompt(t *testing.
 	if strings.Contains(rendered, event.Context.Thread) {
 		t.Fatalf("message displayed internal thread hash %q: %q", event.Context.Thread, rendered)
 	}
+	assertNoBridgeFiller(t, rendered)
 }
 
 func TestBuildQueuedEventDropsBlandTurnEnded(t *testing.T) {
@@ -131,13 +132,14 @@ func TestBuildQueuedEventDetectsRequestUserInputQuestion(t *testing.T) {
 	if req.Kind != "task" || req.Priority != "high" || req.Color != "amber" {
 		t.Fatalf("request = %+v", req)
 	}
-	if len(req.Placements) < 40 {
-		t.Fatalf("expected a rich block-art frame, got %d placements", len(req.Placements))
+	if len(req.Placements) < 20 {
+		t.Fatalf("expected a fallback block-art frame, got %d placements", len(req.Placements))
 	}
 	rendered := renderedRequestText(req)
-	if !strings.Contains(rendered, "ANA") || !strings.Contains(rendered, "SCOPE") || !strings.Contains(rendered, "UNSTICK") || !strings.Contains(rendered, "❓") {
+	if !strings.Contains(rendered, "ANA") || !strings.Contains(rendered, "SCOPE?") || !strings.Contains(rendered, "QUESTION❓") {
 		t.Fatalf("question frame missing useful context: %q", rendered)
 	}
+	assertNoBridgeFiller(t, rendered)
 	if strings.Contains(rendered, "secret") || strings.Contains(rendered, "/Users/georgestander") || strings.Contains(rendered, "release") {
 		t.Fatalf("question frame leaked raw context: %q", rendered)
 	}
@@ -160,7 +162,7 @@ func TestBuildQueuedEventDetectsPlainAssistantQuestion(t *testing.T) {
 	}
 }
 
-func TestBuildQueuedEventRendersRichApprovalFrame(t *testing.T) {
+func TestBuildQueuedEventRendersMinimalApprovalFrame(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	event, ok, err := BuildQueuedEvent("PermissionRequest", []byte(`{"tool_name":"shell_command","title":"Run Tests","cwd":"/Users/georgestander/Documents/ana-board","thread_id":"approval-thread-secret"}`), now)
 	if err != nil {
@@ -187,13 +189,14 @@ func TestBuildQueuedEventRendersRichApprovalFrame(t *testing.T) {
 	if req.Kind != "warning" || req.Priority != "high" || req.Color != "amber" {
 		t.Fatalf("request = %+v", req)
 	}
-	if len(req.Placements) < 40 {
-		t.Fatalf("expected a rich block-art frame, got %d placements", len(req.Placements))
+	if len(req.Placements) < 20 {
+		t.Fatalf("expected a fallback block-art frame, got %d placements", len(req.Placements))
 	}
 	rendered := renderedRequestText(req)
-	if !strings.Contains(rendered, "ANA") || !strings.Contains(rendered, "RUNTESTS") || !strings.Contains(rendered, "APPROVEORNIX") {
+	if !strings.Contains(rendered, "ANA") || !strings.Contains(rendered, "RUNTESTS?") || !strings.Contains(rendered, "OKNEEDED") {
 		t.Fatalf("approval frame missing useful context: %q", rendered)
 	}
+	assertNoBridgeFiller(t, rendered)
 	if strings.Contains(rendered, "secret") || strings.Contains(rendered, "/Users/georgestander") || strings.Contains(rendered, "shell") {
 		t.Fatalf("approval frame leaked raw context: %q", rendered)
 	}
@@ -233,7 +236,7 @@ func TestBuildQueuedEventDoesNotTreatNoErrorsAsFailure(t *testing.T) {
 	}
 }
 
-func TestBuildQueuedEventRendersRichSuccessFrame(t *testing.T) {
+func TestBuildQueuedEventRendersMinimalSuccessFrame(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	event, ok, err := BuildQueuedEvent("turn-ended", []byte(`{"last_message":"implemented and complete","cwd":"/Users/georgestander/dev/clients/valueinresearch/vir_2030","thread_id":"success-thread-secret"}`), now)
 	if err != nil {
@@ -250,22 +253,23 @@ func TestBuildQueuedEventRendersRichSuccessFrame(t *testing.T) {
 	if action.Kind != "success" {
 		t.Fatalf("kind = %q, want success", action.Kind)
 	}
-	if len(action.Request.Placements) < 50 {
-		t.Fatalf("expected a rich success frame, got %d placements", len(action.Request.Placements))
+	if len(action.Request.Placements) < 20 {
+		t.Fatalf("expected a fallback success frame, got %d placements", len(action.Request.Placements))
 	}
 	rendered := renderedRequestText(action.Request)
-	if !strings.Contains(rendered, "VIR2030") || !strings.Contains(rendered, "RE:WORK") || !strings.Contains(rendered, "✅") {
+	if !strings.Contains(rendered, "VIR2030") || !strings.Contains(rendered, "DONE") || !strings.Contains(rendered, "✅") {
 		t.Fatalf("success frame missing context: %q", rendered)
 	}
-	if strings.Contains(rendered, "LANDED") || strings.Contains(rendered, "success-thread") {
-		t.Fatalf("success frame kept stale wording or leaked thread: %q", rendered)
+	assertNoBridgeFiller(t, rendered)
+	if strings.Contains(rendered, "success-thread") {
+		t.Fatalf("success frame leaked thread: %q", rendered)
 	}
 	if strings.Contains(rendered, event.Context.Thread) {
 		t.Fatalf("success frame displayed internal thread hash %q: %q", event.Context.Thread, rendered)
 	}
 }
 
-func TestBuildQueuedEventRendersRichFailureFrame(t *testing.T) {
+func TestBuildQueuedEventRendersMinimalFailureFrame(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	event, ok, err := BuildQueuedEvent("turn-ended", []byte(`{"last_message":"command failed with panic","cwd":"/Users/georgestander/Documents/ana-board","thread_id":"failure-thread-secret"}`), now)
 	if err != nil {
@@ -282,15 +286,16 @@ func TestBuildQueuedEventRendersRichFailureFrame(t *testing.T) {
 	if action.Kind != "failure" {
 		t.Fatalf("kind = %q, want failure", action.Kind)
 	}
-	if len(action.Request.Placements) < 50 {
-		t.Fatalf("expected a rich failure frame, got %d placements", len(action.Request.Placements))
+	if len(action.Request.Placements) < 15 {
+		t.Fatalf("expected a fallback failure frame, got %d placements", len(action.Request.Placements))
 	}
 	rendered := renderedRequestText(action.Request)
-	if !strings.Contains(rendered, "ANA") || !strings.Contains(rendered, "RE:ERROR") || !strings.Contains(rendered, "❌") {
+	if !strings.Contains(rendered, "ANA") || !strings.Contains(rendered, "FAILED") || !strings.Contains(rendered, "❌") {
 		t.Fatalf("failure frame missing context: %q", rendered)
 	}
-	if strings.Contains(rendered, "SOMETHINGSNAPPED") || strings.Contains(rendered, "failure-thread") {
-		t.Fatalf("failure frame kept stale wording or leaked thread: %q", rendered)
+	assertNoBridgeFiller(t, rendered)
+	if strings.Contains(rendered, "failure-thread") {
+		t.Fatalf("failure frame leaked thread: %q", rendered)
 	}
 	if strings.Contains(rendered, event.Context.Thread) {
 		t.Fatalf("failure frame displayed internal thread hash %q: %q", event.Context.Thread, rendered)
@@ -395,6 +400,7 @@ func TestEnqueueAndProcessOncePostsThenDeletesSignal(t *testing.T) {
 	if !strings.Contains(rendered, "TESTS") || !strings.Contains(rendered, "✅") {
 		t.Fatalf("request should include contextual test success with emoji, got %q", rendered)
 	}
+	assertNoBridgeFiller(t, rendered)
 	if len(req.Placements) == 0 {
 		t.Fatal("expected block-art placements")
 	}
@@ -486,4 +492,27 @@ func renderedRequestText(req messages.SubmitRequest) string {
 		builder.WriteString(placement.Symbol)
 	}
 	return builder.String()
+}
+
+func assertNoBridgeFiller(t *testing.T, rendered string) {
+	t.Helper()
+	forbidden := []string{
+		"OPENQUESTION",
+		"ANSWERTOUNSTICK",
+		"UNSTICK",
+		"FROMME",
+		"YOURCALL",
+		"APPROVEORNIX",
+		"NEEDSYOU",
+		"RE:",
+		"THREAD",
+		"LANDED",
+		"SOMETHINGSNAPPED",
+		"SNAPPED",
+	}
+	for _, phrase := range forbidden {
+		if strings.Contains(rendered, phrase) {
+			t.Fatalf("bridge rendered stale filler %q in %q", phrase, rendered)
+		}
+	}
 }

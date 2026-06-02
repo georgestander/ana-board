@@ -544,26 +544,18 @@ func requestForKind(kind string, event QueuedEvent, source string) messages.Subm
 }
 
 func composeFrame(kind string, event QueuedEvent) ([]messages.PlacedTile, bool) {
-	if kind == "question" {
-		return composeQuestionFrame(event)
+	alert, ok := fallbackAlert(kind, event)
+	if !ok {
+		return nil, false
 	}
-	if kind == "approval" {
-		return composeApprovalFrame(event)
-	}
-	return composeSignalFrame(kind, event)
-}
 
-func composeSignalFrame(kind string, event QueuedEvent) ([]messages.PlacedTile, bool) {
-	placements := make([]messages.PlacedTile, 0, 120)
-	header := event.Context.DisplayLabel()
-	topic := signalTopic(kind)
-	lines := signalLines(kind, event.Digest)
 	icon := iconPattern(kind)
-	if topic == "" || len(lines) == 0 || len(icon) == 0 {
+	if len(icon) == 0 {
 		return nil, false
 	}
 
-	if !addTextLine(&placements, 0, 0, board.DefaultCols, header, "blue") {
+	placements := make([]messages.PlacedTile, 0, 80)
+	if !addTextLine(&placements, 0, 0, board.DefaultCols, alert.project, "blue") {
 		return nil, false
 	}
 
@@ -582,152 +574,12 @@ func composeSignalFrame(kind string, event QueuedEvent) ([]messages.PlacedTile, 
 		}
 	}
 
-	textColor := textColorForKind(kind)
-	accentColor := accentColorForKind(kind)
-	textLines := []struct {
-		row   int
-		text  string
-		color string
-	}{
-		{1, lines[0], textColor},
-		{2, lines[1], textColor},
-		{3, lines[2], textColor},
-		{5, "RE: " + topic, "blue"},
-		{7, lines[3], accentColor},
-		{9, lines[4], textColor},
-	}
-	for _, line := range textLines {
-		col := 7
-		max := board.DefaultCols - 7
-		if line.row == 9 {
-			col = 1
-			max = board.DefaultCols - 2
-		}
-		if !addTextLine(&placements, line.row, col, max, line.text, line.color) {
-			return nil, false
-		}
-	}
-
-	return placements, len(placements) != 0
-}
-
-func composeQuestionFrame(event QueuedEvent) ([]messages.PlacedTile, bool) {
-	placements := make([]messages.PlacedTile, 0, 120)
-	header := richFrameHeader(event.Context)
-	topic := strings.TrimSpace(event.Context.Topic)
-	if topic == "" {
-		topic = "OPEN QUESTION"
-	}
-
-	if !addTextLine(&placements, 0, 0, board.DefaultCols, header, "blue") {
+	if !addTextLine(&placements, 2, 7, board.DefaultCols-7, alert.line1, alert.color) {
 		return nil, false
 	}
-
-	icon := []string{
-		".AAA.",
-		"A...A",
-		"...A.",
-		"..AA.",
-		"..A..",
-		".....",
-		"..V..",
-	}
-	for rowOffset, line := range icon {
-		for colOffset, marker := range line {
-			color, ok := iconColors[marker]
-			if !ok {
-				continue
-			}
-			placements = append(placements, messages.PlacedTile{
-				Row:    2 + rowOffset,
-				Col:    1 + colOffset,
-				Symbol: "█",
-				Color:  color,
-			})
-		}
-	}
-
-	lines := questionLines(event.Digest)
-	textLines := []struct {
-		row   int
-		text  string
-		color string
-	}{
-		{1, lines[0], "amber"},
-		{2, lines[1], "amber"},
-		{3, lines[2], "amber"},
-		{5, "RE: " + topic, "blue"},
-		{7, lines[3], "violet"},
-	}
-	for _, line := range textLines {
-		if !addTextLine(&placements, line.row, 7, board.DefaultCols-7, line.text, line.color) {
-			return nil, false
-		}
-	}
-	if !addTextLine(&placements, 9, 1, board.DefaultCols-2, "ANSWER TO UNSTICK", "amber") {
+	if alert.line2 != "" && !addTextLine(&placements, 4, 7, board.DefaultCols-7, alert.line2, alert.color) {
 		return nil, false
 	}
-
-	return placements, len(placements) != 0
-}
-
-func composeApprovalFrame(event QueuedEvent) ([]messages.PlacedTile, bool) {
-	placements := make([]messages.PlacedTile, 0, 120)
-	header := richFrameHeader(event.Context)
-	topic := strings.TrimSpace(event.Context.Topic)
-	if topic == "" {
-		topic = "PERMISSION"
-	}
-
-	if !addTextLine(&placements, 0, 0, board.DefaultCols, header, "blue") {
-		return nil, false
-	}
-
-	icon := []string{
-		"..A..",
-		".AAA.",
-		"AAAAA",
-		"AAAAA",
-		".AAA.",
-		"..A..",
-		"..V..",
-	}
-	for rowOffset, line := range icon {
-		for colOffset, marker := range line {
-			color, ok := iconColors[marker]
-			if !ok {
-				continue
-			}
-			placements = append(placements, messages.PlacedTile{
-				Row:    2 + rowOffset,
-				Col:    1 + colOffset,
-				Symbol: "█",
-				Color:  color,
-			})
-		}
-	}
-
-	lines := approvalLines(event.Digest)
-	textLines := []struct {
-		row   int
-		text  string
-		color string
-	}{
-		{1, lines[0], "amber"},
-		{2, lines[1], "amber"},
-		{3, lines[2], "amber"},
-		{5, "RE: " + topic, "blue"},
-		{7, lines[3], "violet"},
-	}
-	for _, line := range textLines {
-		if !addTextLine(&placements, line.row, 7, board.DefaultCols-7, line.text, line.color) {
-			return nil, false
-		}
-	}
-	if !addTextLine(&placements, 9, 1, board.DefaultCols-2, "APPROVE OR NIX", "amber") {
-		return nil, false
-	}
-
 	return placements, len(placements) != 0
 }
 
@@ -751,123 +603,64 @@ func addTextLine(placements *[]messages.PlacedTile, row, col, max int, text, col
 	return true
 }
 
-func richFrameHeader(context Context) string {
-	label := context.DisplayLabel()
-	topic := strings.TrimSpace(context.Topic)
-	if topic == "" {
-		return label
-	}
-	header := label + " " + topic
-	symbols, err := board.NormalizeSymbols(header)
-	if err == nil && len(symbols) <= board.DefaultCols {
-		return header
-	}
-	return label
+type bridgeAlert struct {
+	project string
+	line1   string
+	line2   string
+	color   string
 }
 
-func approvalLines(digest string) []string {
-	variants := [][]string{
-		{"ROBOT PAUSED", "AT THE GATE", "YOUR CALL ✋", "NO BUTTON NO GO"},
-		{"NEEDS OK", "BEFORE IT MOVES", "YOUR CALL ✋", "GREENLIGHT IT"},
-		{"HOLDING HERE", "FOR PERMISSION", "NO SNEAKY SHIT", "GIVE IT A NOD"},
-		{"TINY BRAKES ON", "UNTIL YOU SAY", "GO OR NO ✋", "YOUR MOVE"},
+func fallbackAlert(kind string, event QueuedEvent) (bridgeAlert, bool) {
+	alert := bridgeAlert{
+		project: event.Context.DisplayLabel(),
+		color:   textColorForKind(kind),
 	}
-	if digest == "" {
-		return variants[0]
-	}
-	return variants[int(digest[0])%len(variants)]
-}
-
-func signalTopic(kind string) string {
-	switch kind {
-	case "success:test", "failure:test":
-		return "TESTS"
-	case "success:build", "failure:build":
-		return "BUILD"
-	case "success":
-		return "WORK"
-	case "failure":
-		return "ERROR"
-	case "celebration":
-		return "WIN"
-	case "swear":
-		return "SPICY"
-	default:
-		return ""
-	}
-}
-
-func signalLines(kind, digest string) []string {
-	var variants [][]string
+	topic := strings.TrimSpace(event.Context.Topic)
 	switch kind {
 	case "success:test":
-		variants = [][]string{
-			{"TESTS GREEN", "NO DRAMA", "✅", "GOOD. KEEP IT", "CHECKS ARE HAPPY"},
-			{"TESTS PASSED", "THEY BEHAVED", "✅", "BANK THAT WIN", "GREEN LIGHT"},
-			{"TESTS CLEAN", "NOT SCREAMING", "✅", "QUIET WIN", "MOVE ALONG"},
-		}
+		alert.line1 = "TESTS GREEN ✅"
 	case "success:build":
-		variants = [][]string{
-			{"BUILD CLEAN", "NO SMOKE", "✅", "PACKAGE BREATHES", "BUILD PASSED"},
-			{"BUILD PASSED", "IT LIVES", "✅", "SHIP SHAPE", "GOOD TO GO"},
-			{"BUILD GREEN", "QUIETLY", "✅", "NO FIRE HERE", "BUNDLE OK"},
-		}
+		alert.line1 = "BUILD OK ✅"
 	case "success":
-		variants = [][]string{
-			{"DONE", "LOOKS OK", "✅", "LOGGED IT", "KEEP MOVING"},
-			{"WORK DONE", "LOOKS OK", "✅", "SMALL WIN", "NEXT THING"},
-			{"ALL SET", "FOR NOW", "✅", "LOGGED IT", "NEXT THING"},
-		}
+		alert.line1 = "DONE ✅"
 	case "failure:test":
-		variants = [][]string{
-			{"TESTS FAILED", "I SAW IT", "❌", "FIX MODE ON", "NO HIDING THIS"},
-			{"TESTS ARE RED", "NOT CUTE", "❌", "DIGGING IN", "RED MEANS WORK"},
-			{"TESTS BROKE", "LOUDLY", "❌", "NOTED. FIXING", "BROKEN TESTS"},
-		}
+		alert.line1 = "TESTS FAILED ❌"
 	case "failure:build":
-		variants = [][]string{
-			{"BUILD YELLED", "IT IS MAD", "⚠️", "CHECKING IT", "BUILD NEEDS LOVE"},
-			{"BUILD BROKE", "NOPE", "⚠️", "I SAW THE SMOKE", "FIX THE BUILD"},
-			{"BUILD IS RED", "VERY RUDE", "⚠️", "PATCH TIME", "NO SHIP YET"},
-		}
+		alert.line1 = "BUILD FAILED ❌"
 	case "failure":
-		variants = [][]string{
-			{"THING BROKE", "NO SUGARCOAT", "❌", "I SAW IT", "FIX MODE ON"},
-			{"ERROR POPPED", "RUDELY", "❌", "NO SWEEPING IT", "NEEDS A FIX"},
-			{"THING WENT", "SIDEWAYS", "❌", "I AM ON IT", "RED FLAG"},
-		}
+		alert.line1 = "FAILED ❌"
 	case "celebration":
-		variants = [][]string{
-			{"HELL YES", "TINY WIN", "✅", "GOOD SHIT", "BANKED"},
-			{"NICE", "THAT WORKED", "✅", "A WIN EXISTS", "KEEP MOVING"},
-			{"WIN LOGGED", "LOUD ENOUGH", "✅", "HELL YES", "MOMENT BANKED"},
-		}
+		alert.line1 = "NICE ✅"
 	case "swear":
-		variants = [][]string{
-			{"FAIR. FUCK", "THAT WAS ROUGH", "😂", "SIDE-EYE ON", "FIX THE DAMN THING"},
-			{"FUCK NOTED", "WITH FEELING", "😂", "I SEE IT", "WE UNSTICK THIS"},
-			{"WTF. FUCK", "WITH FEELING", "😂", "NO BLAND MODE", "SORTING IT"},
+		alert.line1 = swearFallback(event.Signal.Swear)
+	case "approval":
+		if topic != "" {
+			alert.line1 = topic + "?"
+			alert.line2 = "OK NEEDED ✋"
+		} else {
+			alert.line1 = "OK NEEDED ✋"
+		}
+	case "question":
+		if topic != "" {
+			alert.line1 = topic + "?"
+			alert.line2 = "QUESTION ❓"
+		} else {
+			alert.line1 = "QUESTION ❓"
 		}
 	default:
-		return nil
+		return bridgeAlert{}, false
 	}
-	if digest == "" {
-		return variants[0]
+	if alert.line1 == "" {
+		return bridgeAlert{}, false
 	}
-	return variants[int(digest[0])%len(variants)]
+	return alert, true
 }
 
-func questionLines(digest string) []string {
-	variants := [][]string{
-		{"CODEX NEEDS", "YOUR ANSWER", "FOR YOU ❓", "PICK A DOOR"},
-		{"PLAN TOOL", "IS WAVING", "AT YOU ❓", "YOUR MOVE"},
-		{"HOLD UP", "YOU DECIDE", "THIS BIT ❓", "SEND VERDICT"},
-		{"THREAD PAUSED", "ON A QUESTION", "FROM ME ❓", "YOUR CALL"},
+func swearFallback(swear string) string {
+	if swear == "" {
+		return "I HEAR YOU 😂"
 	}
-	if digest == "" {
-		return variants[0]
-	}
-	return variants[int(digest[0])%len(variants)]
+	return strings.ToUpper(swear) + " NOTED 😂"
 }
 
 func fitSymbols(symbols []string, max int) []string {
@@ -880,41 +673,17 @@ func fitSymbols(symbols []string, max int) []string {
 	return symbols[:max]
 }
 
-func frameLines(kind, label string) []string {
-	switch kind {
-	case "swear":
-		return []string{label, "FAIR. FUCKING", "ROUGH 😂"}
-	case "celebration":
-		return []string{label, "HELL YES", "CLEAN WIN ✅"}
-	case "failure:test":
-		return []string{label, "TESTS BIT BACK", "❌"}
-	case "failure:build":
-		return []string{label, "BUILD YELLING", "⚠️"}
-	case "failure":
-		return []string{label, "SOMETHING", "SNAPPED ❌"}
-	case "approval":
-		return []string{label, "NEEDS YOU", "⚠️"}
-	case "question":
-		return []string{label, "QUESTION", "ANSWER NEEDED ❓"}
-	case "success:test":
-		return []string{label, "TESTS GREEN", "✅"}
-	case "success:build":
-		return []string{label, "BUILD CLEAN", "✅"}
-	case "success":
-		return []string{label, "LANDED", "✅"}
-	default:
-		return nil
-	}
-}
-
 func fallbackText(kind string, event QueuedEvent) string {
-	label := event.Context.DisplayLabel()
-	lines := signalLines(kind, event.Digest)
-	if len(lines) == 0 {
-		return "[blue]" + label + " MOVED."
+	alert, ok := fallbackAlert(kind, event)
+	if !ok {
+		return "[blue]" + event.Context.DisplayLabel() + " MOVED."
 	}
 	color := textColorForKind(kind)
-	return fmt.Sprintf("[%s]%s %s %s %s", color, label, lines[0], lines[1], lines[2])
+	parts := []string{alert.project, alert.line1}
+	if alert.line2 != "" {
+		parts = append(parts, alert.line2)
+	}
+	return "[" + color + "]" + strings.Join(parts, " ")
 }
 
 func iconPattern(kind string) []string {
@@ -976,19 +745,6 @@ func textColorForKind(kind string) string {
 		return "violet"
 	default:
 		return "blue"
-	}
-}
-
-func accentColorForKind(kind string) string {
-	switch {
-	case strings.HasPrefix(kind, "success"), kind == "celebration":
-		return "blue"
-	case strings.HasPrefix(kind, "failure"):
-		return "amber"
-	case kind == "swear":
-		return "amber"
-	default:
-		return "violet"
 	}
 }
 
